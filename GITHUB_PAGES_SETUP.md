@@ -11,16 +11,17 @@ Proje başarıyla GitHub'a yüklendi: https://github.com/1sthillman/LYR-CST
 1. GitHub'da repository'nize gidin: https://github.com/1sthillman/LYR-CST
 2. **Settings** > **Pages** sekmesine gidin
 3. **Source** bölümünden:
-   - **Deploy from a branch** seçin
-   - **Branch**: `gh-pages` seçin
-   - **Folder**: `/ (root)` seçin
-   - **Save** butonuna tıklayın
+   - **⚠️ ÖNEMLİ**: **"GitHub Actions"** seçin (Deploy from a branch DEĞİL!)
+   - Bu seçenek görünmüyorsa, önce workflow'un bir kez çalışması gerekebilir
 
 4. **Actions** sekmesine gidin
-5. İlk push'tan sonra otomatik olarak workflow çalışacak
-6. Workflow tamamlandığında site yayında olacak
+5. **Deploy to GitHub Pages** workflow'unu bulun
+6. Eğer çalışmamışsa, **"Run workflow"** butonuna tıklayın
+7. Workflow tamamlandığında site yayında olacak
 
 **URL**: `https://1sthillman.github.io/LYR-CST/`
+
+**Not**: İlk deploy 5-10 dakika sürebilir. Sabırlı olun!
 
 ### Yöntem 2: Manuel Deploy
 
