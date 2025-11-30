@@ -71,9 +71,7 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     lyricsCache.initialize().catch(console.error);
   }, []);
 
-  const words: string[] = lyrics.split(/\s+/).filter((w: string) => w.trim());
-
-  // Debug log ekle
+  // Debug log ekle - ÖNCE TANIMLA (console override'tan önce)
   const addDebugLog = useCallback((message: string) => {
     const timestamp = new Date().toISOString();
     const logEntry = `[${timestamp}] ${message}`;
@@ -84,6 +82,98 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
       debugLogsRef.current = debugLogsRef.current.slice(-maxDebugLogs);
     }
   }, []);
+
+  // Console override'ı EN ERKEN BAŞLAT - Component mount olduğunda hemen
+  useEffect(() => {
+    // Orijinal console metodlarını sakla (sadece bir kez - global)
+    if (!(window as any).__originalConsoleLog) {
+      (window as any).__originalConsoleLog = console.log.bind(console);
+      (window as any).__originalConsoleError = console.error.bind(console);
+      (window as any).__originalConsoleWarn = console.warn.bind(console);
+      (window as any).__originalConsoleInfo = console.info.bind(console);
+      (window as any).__originalConsoleDebug = console.debug.bind(console);
+      
+      // İlk log - console override başladı
+      (window as any).__originalConsoleLog('🔧 [DEBUG] Console override başlatıldı - Tüm loglar yakalanacak');
+    }
+
+    const originalLog = (window as any).__originalConsoleLog;
+    const originalError = (window as any).__originalConsoleError;
+    const originalWarn = (window as any).__originalConsoleWarn;
+    const originalInfo = (window as any).__originalConsoleInfo;
+    const originalDebug = (window as any).__originalConsoleDebug;
+
+    // Helper function to format log message
+    const formatLogMessage = (args: any[]): string => {
+      return args.map(arg => {
+        if (arg === null) return 'null';
+        if (arg === undefined) return 'undefined';
+        if (typeof arg === 'object') {
+          try {
+            // Circular reference kontrolü
+            const seen = new WeakSet();
+            return JSON.stringify(arg, (_key, value) => {
+              if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) {
+                  return '[Circular]';
+                }
+                seen.add(value);
+              }
+              return value;
+            }, 2);
+          } catch (e) {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      }).join(' ');
+    };
+
+    // Console.log override - HER ZAMAN AKTİF (karaoke açık/kapalı fark etmez - TÜM LOGLARI YAKALA)
+    console.log = (...args: any[]) => {
+      originalLog.apply(console, args);
+      const logMessage = formatLogMessage(args);
+      addDebugLog(`[LOG] ${logMessage}`);
+    };
+
+    // Console.error override - HER ZAMAN AKTİF
+    console.error = (...args: any[]) => {
+      originalError.apply(console, args);
+      const logMessage = formatLogMessage(args);
+      addDebugLog(`[ERROR] ${logMessage}`);
+    };
+
+    // Console.warn override - HER ZAMAN AKTİF
+    console.warn = (...args: any[]) => {
+      originalWarn.apply(console, args);
+      const logMessage = formatLogMessage(args);
+      addDebugLog(`[WARN] ${logMessage}`);
+    };
+
+    // Console.info override - HER ZAMAN AKTİF
+    console.info = (...args: any[]) => {
+      originalInfo.apply(console, args);
+      const logMessage = formatLogMessage(args);
+      addDebugLog(`[INFO] ${logMessage}`);
+    };
+
+    // Console.debug override - HER ZAMAN AKTİF
+    console.debug = (...args: any[]) => {
+      originalDebug.apply(console, args);
+      const logMessage = formatLogMessage(args);
+      addDebugLog(`[DEBUG] ${logMessage}`);
+    };
+
+    // İlk log - console override aktif
+    originalLog('🔧 [DEBUG] Console override aktif - Tüm loglar yakalanıyor');
+
+    // Cleanup yapma - console override kalıcı olmalı
+    return () => {
+      // Cleanup yapmıyoruz - console override kalıcı
+    };
+  }, [addDebugLog]);
+
+  const words: string[] = lyrics.split(/\s+/).filter((w: string) => w.trim());
 
   // Debug loglarını kopyala
   const copyDebugLogs = useCallback(async () => {
