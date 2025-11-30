@@ -177,7 +177,7 @@ export class SpeechRecognitionService {
         console.log('🎤 [SPEECH] Recognition state:', (this.recognition as any)?.state || 'unknown');
         console.log('🎤 [SPEECH] isListening:', this.isListening);
         console.log('🎤 [SPEECH] Callback var mı:', !!this.callback);
-        console.log('🎤 [SPEECH] Event type:', event.type);
+        // Event type property'si SpeechRecognitionEvent'te olmayabilir
         console.log('🎤 [SPEECH] Event timestamp:', Date.now());
         
         // MOBİLDE TÜM RESULT EVENT'LERİNİ LOGLA (DEBUG İÇİN)
