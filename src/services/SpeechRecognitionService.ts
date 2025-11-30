@@ -373,8 +373,9 @@ export class SpeechRecognitionService {
             confidence = result.isFinal ? 0.9 : 0.8;
           }
 
-          // ÇOK DÜŞÜK THRESHOLD - Web Speech API'nin düşük confidence sorunu için
-          const minConfidence = 0.01;
+          // AKILLI THRESHOLD - Sessizlik durumunda kelime algılanmasın
+          // Minimum confidence yükseltildi - sadece gerçekten kelime algılandığında işle
+          const minConfidence = 0.25; // 0.01 -> 0.25 (sessizlikte algılama yok)
 
           if (transcript.length > 0 && confidence >= minConfidence) {
             // Kelimeleri ayır ve temizle

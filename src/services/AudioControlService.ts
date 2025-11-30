@@ -18,18 +18,46 @@ export class AudioControlService {
 
   /**
    * Şarkı yükle ve ses seviyesini ayarla
+   * GitHub Pages blob URL sorununu çözmek için data URL kullanıyoruz
    */
   async loadSong(filePath: string): Promise<void> {
     try {
       // Eski audio element'i temizle
       if (this.audioElement) {
         this.audioElement.pause();
+        // Blob URL'i revoke et (memory leak önleme)
+        if (this.audioElement.src.startsWith('blob:')) {
+          URL.revokeObjectURL(this.audioElement.src);
+        }
         this.audioElement = null;
       }
 
-      // Android için özel işlem
       let audioSrc = filePath;
-      if (isAndroid() && filePath.startsWith('file://')) {
+
+      // Blob URL ise (GitHub Pages'de çalışmaz) - data URL'e dönüştür
+      if (filePath.startsWith('blob:')) {
+        try {
+          const response = await fetch(filePath);
+          const blob = await response.blob();
+          // Blob'u data URL'e dönüştür (GitHub Pages uyumlu)
+          const reader = new FileReader();
+          audioSrc = await new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => {
+              if (typeof reader.result === 'string') {
+                resolve(reader.result);
+              } else {
+                reject(new Error('Blob okunamadı'));
+              }
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch (error) {
+          console.warn('Blob URL dönüştürme hatası, direkt kullanılıyor:', error);
+        }
+      }
+      // Android için özel işlem
+      else if (isAndroid() && filePath.startsWith('file://')) {
         // Android'de Capacitor Filesystem'den oku
         try {
           const pathWithoutPrefix = filePath.replace('file://', '');
@@ -38,10 +66,8 @@ export class AudioControlService {
             directory: Directory.Data,
           });
           
-          // Base64'ü blob URL'e dönüştür
-          const base64Response = await fetch(`data:audio/*;base64,${fileData.data}`);
-          const blob = await base64Response.blob();
-          audioSrc = URL.createObjectURL(blob);
+          // Base64'ü data URL'e dönüştür (blob URL yerine - GitHub Pages uyumlu)
+          audioSrc = `data:audio/*;base64,${fileData.data}`;
         } catch (error) {
           console.warn('Android dosya okuma hatası, direkt path kullanılıyor:', error);
         }
@@ -49,6 +75,13 @@ export class AudioControlService {
 
       // Yeni audio element oluştur
       const audio = new Audio(audioSrc);
+      
+      // Hata yakalama
+      audio.addEventListener('error', (e) => {
+        console.error('❌ Audio element hatası:', e);
+        console.error('Audio src:', audioSrc.substring(0, 100));
+      });
+
       this.audioElement = audio;
 
       // Ses seviyesini ayarla
@@ -57,7 +90,7 @@ export class AudioControlService {
       console.log('✅ Şarkı yüklendi:', filePath);
     } catch (error) {
       console.error('❌ Şarkı yükleme hatası:', error);
-      throw new Error('Ses dosyası yüklenemedi');
+      throw new Error('Ses dosyası yüklenemedi: ' + (error as Error).message);
     }
   }
 

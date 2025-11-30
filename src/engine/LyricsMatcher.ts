@@ -215,9 +215,9 @@ export class LyricsMatcher {
       }
     }
 
-    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - DAHA ESNEK (YÜKSEK DOĞRULUK İÇİN)
-    // Similarity threshold daha düşük, confidence threshold daha düşük
-    if (bestMatch && bestMatch.similarity >= dynamicThreshold && confidence >= 0.15) { // 0.2 -> 0.15 (daha esnek)
+    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - AKILLI EŞLEŞME
+    // Confidence threshold yükseltildi - sadece gerçekten kelime algılandığında eşleş
+    if (bestMatch && bestMatch.similarity >= dynamicThreshold && confidence >= 0.25) { // 0.15 -> 0.25 (daha akıllı - sessizlikte eşleşme yok)
       const matchIndex = bestMatch.index;
       
       // POZİSYON ATLAMASINI SINIRLA
@@ -331,21 +331,28 @@ export class LyricsMatcher {
       return match; // Pozisyon ilerletme, beklemeye devam et
     }
     
-    // Eğer çok düşük benzerlik varsa (0.25'ten az) ve 3 saniye geçtiyse pozisyonu ilerlet
-    // DAHA AKILLI - sadece gerçekten takılı kalırsa ilerlet
+    // KRİTİK: Sadece gerçekten kelime algılandıysa ve confidence yeterliyse timeout başlat
+    // Sessizlik durumunda (çok düşük confidence) timeout başlatma
+    const MIN_CONFIDENCE_FOR_TIMEOUT = 0.3; // Minimum confidence threshold
+    
+    // Eğer çok düşük benzerlik varsa (0.20'den az) VE confidence yeterliyse (0.3+) VE 5 saniye geçtiyse pozisyonu ilerlet
+    // DAHA AKILLI - sadece gerçekten takılı kalırsa ve gerçekten kelime algılandıysa ilerlet
     const timeSinceLastMatch = now - this.lastMatchTime;
-    if (similarity < 0.25 && timeSinceLastMatch > 3000) { // 0.20 -> 0.25, 1500 -> 3000 (daha akıllı)
-      console.log('⏩ Düşük benzerlik + uzun timeout: Pozisyon ilerletiliyor (akış korunuyor)');
+    if (similarity < 0.20 && confidence >= MIN_CONFIDENCE_FOR_TIMEOUT && timeSinceLastMatch > 5000) {
+      // Gerçekten kelime algılandı ama eşleşmedi ve uzun süre geçti
+      console.log('⏩ Gerçek kelime algılandı ama eşleşmedi, uzun timeout: Pozisyon ilerletiliyor');
       this._currentPosition = Math.min(this._currentPosition + 1, this.lyrics.length);
       this.lastMatchTime = now;
       this.lastDetectedWord = ''; // Temizle
       this.clearStuckTimeout();
-      // Timeout'u başlatma - sadece gerçekten takılı kalırsa başlat
-    } else {
-      // Timeout'u başlat (takılı kalma kontrolü) - sadece gerçekten kelime algılandığında
-      // lastMatchTime'ı güncelle (kelime algılandı ama eşleşmedi)
+    } else if (confidence >= MIN_CONFIDENCE_FOR_TIMEOUT) {
+      // Gerçekten kelime algılandı (confidence yeterli) - timeout başlat
       this.lastMatchTime = now;
       this.startStuckTimeout(detectedWordClean); // Partial match kontrolü ile
+    } else {
+      // Çok düşük confidence - sessizlik veya gürültü, timeout başlatma
+      // Sadece lastMatchTime'ı güncelleme (sessizlik durumunda ilerleme yok)
+      this.clearStuckTimeout();
     }
     
     return match;
