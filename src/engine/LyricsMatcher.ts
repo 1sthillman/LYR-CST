@@ -140,6 +140,34 @@ export class LyricsMatcher {
    * Partial match kontrolü - algılanan kelime hedef kelimenin başlangıcı mı?
    * Örnek: "git" -> "gittim" ✅ (kullanıcı hala kelimeyi söylüyor)
    */
+  private isPartialMatchForWord(detectedWord: string, targetWord: string): boolean {
+    if (!detectedWord || detectedWord.length < 2) {
+      return false;
+    }
+
+    const detectedWordClean = this.cleanWord(detectedWord);
+    const targetWordClean = this.cleanWord(targetWord);
+    
+    if (detectedWordClean.length < 2 || targetWordClean.length < 2) {
+      return false;
+    }
+
+    // Algılanan kelime hedef kelimenin başlangıcı mı?
+    if (targetWordClean.toLowerCase().startsWith(detectedWordClean.toLowerCase())) {
+      const matchRatio = detectedWordClean.length / targetWordClean.length;
+      // En az %30 eşleşme varsa partial match (kullanıcı hala söylüyor)
+      if (matchRatio >= 0.3 && matchRatio < 1.0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Partial match kontrolü - algılanan kelime hedef kelimenin başlangıcı mı?
+   * Örnek: "git" -> "gittim" ✅ (kullanıcı hala kelimeyi söylüyor)
+   */
   private isPartialMatch(detectedWord: string): boolean {
     if (!detectedWord || detectedWord.length < 2) {
       return false;
@@ -225,29 +253,36 @@ export class LyricsMatcher {
       }
     }
 
-    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - AKILLI EŞLEŞME
-    // Confidence threshold yükseltildi - arka plan gürültüsü ve yanlış algılamaları önleme
-    // Similarity threshold yükseltildi - yanlış eşleşmeleri önleme
-    const minConfidenceForMatch = 0.50; // Minimum confidence 0.50 (arka plan gürültüsü önleme)
-    const minSimilarityForMatch = 0.75; // Minimum similarity 0.75 (yanlış eşleşmeleri önleme)
+    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - AKILLI VE HIZLI EŞLEŞME
+    // Confidence threshold - arka plan gürültüsü önleme ama çok yüksek değil (performans için)
+    // Similarity threshold - partial match'ler için esnek, normal eşleşmeler için sıkı
+    const minConfidenceForMatch = 0.45; // Minimum confidence 0.45 (arka plan gürültüsü önleme ama performans için düşürüldü)
+    
+    // Partial match kontrolü - eğer partial match varsa daha esnek similarity
+    const isPartialMatchForBest = bestMatch && this.isPartialMatchForWord(detectedWordClean, this.lyrics[bestMatch.index]);
+    const minSimilarityForMatch = isPartialMatchForBest ? 0.70 : 0.75; // Partial match için 0.70, normal için 0.75
     
     // DETAYLI LOG - Eşleştirme sürecini logla
     if (bestMatch) {
-      console.log(`🔍 [MATCHER] Eşleştirme kontrolü: "${detectedWordClean}" | Mevcut pozisyon: ${this._currentPosition}/${this.lyrics.length} | Hedef kelime: "${this.lyrics[this._currentPosition]}" | Similarity: ${bestMatch.similarity.toFixed(2)} | Threshold: ${dynamicThreshold.toFixed(2)} | MinSimilarity: ${minSimilarityForMatch.toFixed(2)} | Confidence: ${confidence.toFixed(2)} | MinConfidence: ${minConfidenceForMatch.toFixed(2)}`);
+      console.log(`🔍 [MATCHER] Eşleştirme kontrolü: "${detectedWordClean}" | Mevcut pozisyon: ${this._currentPosition}/${this.lyrics.length} | Hedef kelime: "${this.lyrics[this._currentPosition]}" | Similarity: ${bestMatch.similarity.toFixed(2)} | Threshold: ${dynamicThreshold.toFixed(2)} | MinSimilarity: ${minSimilarityForMatch.toFixed(2)} | Confidence: ${confidence.toFixed(2)} | MinConfidence: ${minConfidenceForMatch.toFixed(2)} | PartialMatch: ${isPartialMatchForBest}`);
     }
     
     // KRİTİK: Hem similarity hem confidence yeterli olmalı
+    // Partial match'ler için daha esnek similarity threshold
     if (bestMatch && 
         bestMatch.similarity >= Math.max(dynamicThreshold, minSimilarityForMatch) && 
         confidence >= minConfidenceForMatch) {
       const matchIndex = bestMatch.index;
       
-      // POZİSYON ATLAMASINI SINIRLA - DAHA SIKI KONTROL
+      // POZİSYON ATLAMASINI SINIRLA - AKILLI VE HIZLI KONTROL
       const positionJump = matchIndex - this._currentPosition;
       
-      // KRİTİK: Pozisyon atlaması için daha yüksek similarity gerekli
-      // Eğer pozisyon atlanıyorsa (jump > 0), similarity daha yüksek olmalı
-      const minSimilarityForJump = positionJump > 0 ? 0.85 : minSimilarityForMatch; // Atlama için 0.85 similarity
+      // KRİTİK: Pozisyon atlaması için similarity kontrolü - partial match'ler için esnek
+      // Partial match varsa daha esnek, yoksa sıkı
+      const isPartialMatchForJump = this.isPartialMatchForWord(detectedWordClean, this.lyrics[matchIndex]);
+      const minSimilarityForJump = positionJump > 0 
+        ? (isPartialMatchForJump ? 0.75 : 0.80) // Partial match atlaması için 0.75, normal atlama için 0.80
+        : minSimilarityForMatch;
       
       if (positionJump > this.MAX_POSITION_JUMP) {
         // Çok büyük atlama - eşleşmeyi reddet
@@ -278,10 +313,10 @@ export class LyricsMatcher {
         return match;
       }
       
-      // Pozisyon atlaması için yüksek similarity kontrolü
+      // Pozisyon atlaması için similarity kontrolü - partial match'ler için esnek
       if (positionJump > 0 && bestMatch.similarity < minSimilarityForJump) {
         // Pozisyon atlanıyor ama similarity yeterli değil - reddet
-        console.log(`⚠️ [MATCHER] Pozisyon atlaması reddedildi: Similarity yetersiz | Pozisyon: ${this._currentPosition} -> ${matchIndex} | Similarity: ${bestMatch.similarity.toFixed(2)} | MinSimilarity: ${minSimilarityForJump.toFixed(2)}`);
+        console.log(`⚠️ [MATCHER] Pozisyon atlaması reddedildi: Similarity yetersiz | Pozisyon: ${this._currentPosition} -> ${matchIndex} | Similarity: ${bestMatch.similarity.toFixed(2)} | MinSimilarity: ${minSimilarityForJump.toFixed(2)} | PartialMatch: ${isPartialMatchForJump}`);
         // Eşleşmeyi reddet, mevcut pozisyonda kal
         const targetWord = this.lyrics[this._currentPosition];
         const match: MatchedWord = {
@@ -381,20 +416,21 @@ export class LyricsMatcher {
     this.lastWordDetectedTime = now; // Kelime algılandı zamanını güncelle
     this.consecutiveNoMatchCount++; // Eşleşme olmadı, sayacı artır
     
-    // Eğer partial match varsa - timeout başlatma, beklemeye devam et
-    if (isPartial) {
-      // Partial match var - kullanıcı hala kelimeyi söylüyor olabilir
-      // Timeout başlatma, sadece lastMatchTime'ı güncelle
-      this.lastMatchTime = now;
-      this.consecutiveNoMatchCount = 0; // Partial match varsa reset (kullanıcı söylüyor)
-      this.clearStuckTimeout(); // Mevcut timeout'u temizle
-      return match; // Pozisyon ilerletme, beklemeye devam et
-    }
+      // Eğer partial match varsa - timeout başlatma, beklemeye devam et
+      if (isPartial) {
+        // Partial match var - kullanıcı hala kelimeyi söylüyor olabilir
+        // Timeout başlatma, sadece lastMatchTime'ı güncelle
+        this.lastMatchTime = now;
+        this.lastWordDetectedTime = now; // Kelime algılandı zamanını güncelle
+        this.consecutiveNoMatchCount = 0; // Partial match varsa reset (kullanıcı söylüyor)
+        this.clearStuckTimeout(); // Mevcut timeout'u temizle
+        return match; // Pozisyon ilerletme, beklemeye devam et
+      }
     
     // KRİTİK: Sadece gerçekten kelime algılandıysa ve confidence yeterliyse timeout başlat
     // Sessizlik durumunda (çok düşük confidence) timeout başlatma
-    // Confidence threshold yükseltildi - arka plan gürültüsü için timeout başlatma
-    const MIN_CONFIDENCE_FOR_TIMEOUT = 0.50; // Minimum confidence threshold (0.3 -> 0.50)
+    // Partial match varsa timeout başlatma - kullanıcı hala kelimeyi söylüyor
+    const MIN_CONFIDENCE_FOR_TIMEOUT = 0.45; // Minimum confidence threshold (performans için 0.45)
     
     // Eğer çok düşük benzerlik varsa (0.15'ten az) VE confidence yeterliyse (0.3+) VE 10 saniye geçtiyse pozisyonu ilerlet
     // DAHA AKILLI - sadece gerçekten takılı kalırsa ve gerçekten kelime algılandıysa ilerlet
