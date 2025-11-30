@@ -9,6 +9,7 @@ import {
 import speechRecognitionService from '../../services/SpeechRecognitionService';
 import { dummyRecorderService } from '../../services/DummyRecorderService';
 import { LyricsMatcher } from '../../engine/LyricsMatcher';
+import { isAndroid } from '../../utils/platform';
 import { dbAdapter } from '../../database/DatabaseAdapter';
 import { VirtualLyricsDisplay } from './VirtualLyricsDisplay';
 import { lyricsCache } from '../../cache/LyricsCache';
@@ -175,21 +176,30 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
       setIsLoading(true);
       setError(null);
       
-      // 1. Mikrofon izni kontrolü
+      // 1. Mikrofon izni kontrolü - HER PLATFORMDA ÇALIŞIR (Web ve Android)
+      console.log('🎤 [PLAYER] Mikrofon izni isteniyor...');
       await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ [PLAYER] Mikrofon izni verildi!');
 
       // 2. Veritabanını başlat
       await dbAdapter.initialize();
 
-      // 3. DUMMY RECORDER başlat (Android'in mikrofonu kapatmasını önlemek için)
+      // 3. DUMMY RECORDER başlat - SADECE ANDROID'DE (Web'de çakışma yapmasın)
       // Bu Android'e "ses kaydediyorum" sinyali verir, böylece mikrofon kapanmaz
-      try {
-        await dummyRecorderService.start();
-        // 500ms bekle - Android'in "kayıt modunu" anlaması için
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (dummyError) {
-        console.error('❌ [PLAYER] Dummy recorder başlatılamadı:', dummyError);
-        // Dummy recorder olmadan da devam et
+      // WEB'DE ÇALIŞTIRMA - Web'de mikrofon zaten stabil, çakışma yapmasın
+      if (isAndroid()) {
+        try {
+          console.log('📱 [PLAYER] Android tespit edildi - Dummy recorder başlatılıyor...');
+          await dummyRecorderService.start();
+          // 500ms bekle - Android'in "kayıt modunu" anlaması için
+          await new Promise(resolve => setTimeout(resolve, 500));
+          console.log('✅ [PLAYER] Dummy recorder başlatıldı (Android)');
+        } catch (dummyError) {
+          console.error('❌ [PLAYER] Dummy recorder başlatılamadı:', dummyError);
+          // Dummy recorder olmadan da devam et
+        }
+      } else {
+        console.log('🌐 [PLAYER] Web tespit edildi - Mikrofon direkt çalışacak (Dummy recorder gerek yok)');
       }
 
       // 4. Müzik varsa oynat
@@ -202,8 +212,10 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
         }
       }
 
-      // 5. Konuşma tanımayı başlat (Dummy recorder ile aynı stream'i paylaşır)
+      // 5. Konuşma tanımayı başlat - HER PLATFORMDA ÇALIŞIR (Web ve Android)
+      console.log('🎤 [PLAYER] Speech Recognition başlatılıyor...');
       await speechRecognitionService.initialize(handleWordDetected);
+      console.log('✅ [PLAYER] Speech Recognition başlatıldı - Mikrofon aktif!');
       
       matcherRef.current.reset();
       setCurrentWordIndex(0);
@@ -220,11 +232,13 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
       dbAdapter.logError('MICROPHONE_ACCESS_DENIED', errorMessage);
       toast.error(`Hata: ${errorMessage}`);
       
-      // Hata olursa dummy recorder'ı da durdur
-      try {
-        await dummyRecorderService.stop();
-      } catch (e) {
-        // Ignore
+      // Hata olursa dummy recorder'ı da durdur - SADECE ANDROID'DE
+      if (isAndroid()) {
+        try {
+          await dummyRecorderService.stop();
+        } catch (e) {
+          // Ignore
+        }
       }
     } finally {
       setIsLoading(false);
@@ -241,11 +255,14 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     // 2. Müziği durdur
     audioControlService.stop();
     
-    // 3. Dummy recorder'ı durdur (Android mikrofon kilidini aç)
-    try {
-      await dummyRecorderService.stop();
-    } catch (error) {
-      console.error('❌ [PLAYER] Dummy recorder durdurulamadı:', error);
+    // 3. Dummy recorder'ı durdur - SADECE ANDROID'DE (Web'de çalışmıyor zaten)
+    if (isAndroid()) {
+      try {
+        await dummyRecorderService.stop();
+        console.log('✅ [PLAYER] Dummy recorder durduruldu (Android)');
+      } catch (error) {
+        console.error('❌ [PLAYER] Dummy recorder durdurulamadı:', error);
+      }
     }
     
     // 4. Performans kaydet
@@ -285,7 +302,10 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
       // Component kapanırken tüm servisleri temizle
       if (isListening) {
         speechRecognitionService.stop();
-        dummyRecorderService.stop().catch(console.error);
+        // Cleanup - SADECE ANDROID'DE
+        if (isAndroid()) {
+          dummyRecorderService.stop().catch(console.error);
+        }
       }
     };
   }, [isListening]);

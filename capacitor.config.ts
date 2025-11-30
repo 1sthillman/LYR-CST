@@ -6,6 +6,9 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
+    // GitHub Pages URL'ini WebView'da göster
+    url: 'https://1sthillman.github.io/LYR-CST/',
+    cleartext: false, // HTTPS kullan
   },
   plugins: {
     CapacitorSQLite: {
