@@ -39,4 +39,13 @@ export const getPlatform = (): 'web' | 'android' | 'ios' => {
   return isAndroid() ? 'android' : 'web';
 };
 
+/**
+ * Mobil tarayıcı kontrolü (user agent bazlı)
+ * Web sitesinden çalışıyorsa bile mobil tarayıcıyı tespit eder
+ */
+export const isMobileBrowser = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 

@@ -399,10 +399,16 @@ export class SpeechRecognitionService {
           }
 
           // AKILLI THRESHOLD - Sessizlik ve arka plan gürültüsü algılanmasın
-          // Confidence threshold yükseltildi - arka plan gürültüsü geçmesin
-          // Interim results için daha yüksek threshold (arka plan gürültüsü önleme)
-          // Final results için daha yüksek threshold (kesin algılama için)
-          const minConfidence = result.isFinal ? 0.40 : 0.35; // Interim için 0.35, Final için 0.40 (arka plan gürültüsü önleme)
+          // MOBİL İÇİN ÖZEL: Mobilde confidence değerleri genelde daha düşük, bu yüzden daha esnek threshold
+          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          
+          // Confidence threshold - mobilde daha esnek
+          let minConfidence: number;
+          if (result.isFinal) {
+            minConfidence = isMobile ? 0.30 : 0.40; // Final: Mobil 0.30, PC 0.40
+          } else {
+            minConfidence = isMobile ? 0.25 : 0.35; // Interim: Mobil 0.25, PC 0.35
+          }
 
           if (transcript.length > 0 && confidence >= minConfidence) {
             // Kelimeleri ayır ve temizle

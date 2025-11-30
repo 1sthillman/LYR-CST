@@ -1,6 +1,7 @@
 import { MatchedWord } from '../types';
 import { calculateSimilarity } from '../utils/stringUtils';
 import { AdaptiveThreshold } from './AdaptiveThreshold';
+import { isMobileBrowser } from '../utils/platform';
 
 /**
  * Şarkı sözleri eşleştirme motoru - AKILLI VE HIZLI (AKIŞI BOZMAZ)
@@ -254,13 +255,22 @@ export class LyricsMatcher {
     }
 
     // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - AKILLI VE HIZLI EŞLEŞME
-    // Confidence threshold - arka plan gürültüsü önleme ama çok yüksek değil (performans için)
-    // Similarity threshold - partial match'ler için esnek, normal eşleşmeler için sıkı
-    const minConfidenceForMatch = 0.45; // Minimum confidence 0.45 (arka plan gürültüsü önleme ama performans için düşürüldü)
+    // MOBİL İÇİN ÖZEL AYARLAR: Mobilde confidence ve similarity threshold'ları daha esnek
+    const isMobile = isMobileBrowser();
+    
+    // Confidence threshold - mobilde daha esnek (mobilde confidence değerleri genelde daha düşük)
+    const minConfidenceForMatch = isMobile ? 0.35 : 0.45; // Mobil: 0.35, PC: 0.45
     
     // Partial match kontrolü - eğer partial match varsa daha esnek similarity
     const isPartialMatchForBest = bestMatch && this.isPartialMatchForWord(detectedWordClean, this.lyrics[bestMatch.index]);
-    const minSimilarityForMatch = isPartialMatchForBest ? 0.70 : 0.75; // Partial match için 0.70, normal için 0.75
+    
+    // Similarity threshold - mobilde daha esnek (mobilde algılama farklı olabilir)
+    let minSimilarityForMatch: number;
+    if (isPartialMatchForBest) {
+      minSimilarityForMatch = isMobile ? 0.65 : 0.70; // Partial match: Mobil 0.65, PC 0.70
+    } else {
+      minSimilarityForMatch = isMobile ? 0.70 : 0.75; // Normal: Mobil 0.70, PC 0.75
+    }
     
     // DETAYLI LOG - Eşleştirme sürecini logla
     if (bestMatch) {
@@ -278,11 +288,18 @@ export class LyricsMatcher {
       const positionJump = matchIndex - this._currentPosition;
       
       // KRİTİK: Pozisyon atlaması için similarity kontrolü - partial match'ler için esnek
-      // Partial match varsa daha esnek, yoksa sıkı
+      // MOBİL İÇİN ÖZEL: Mobilde pozisyon atlaması için daha esnek threshold
       const isPartialMatchForJump = this.isPartialMatchForWord(detectedWordClean, this.lyrics[matchIndex]);
-      const minSimilarityForJump = positionJump > 0 
-        ? (isPartialMatchForJump ? 0.75 : 0.80) // Partial match atlaması için 0.75, normal atlama için 0.80
-        : minSimilarityForMatch;
+      let minSimilarityForJump: number;
+      if (positionJump > 0) {
+        if (isPartialMatchForJump) {
+          minSimilarityForJump = isMobile ? 0.70 : 0.75; // Partial match atlaması: Mobil 0.70, PC 0.75
+        } else {
+          minSimilarityForJump = isMobile ? 0.75 : 0.80; // Normal atlama: Mobil 0.75, PC 0.80
+        }
+      } else {
+        minSimilarityForJump = minSimilarityForMatch;
+      }
       
       if (positionJump > this.MAX_POSITION_JUMP) {
         // Çok büyük atlama - eşleşmeyi reddet
@@ -430,7 +447,8 @@ export class LyricsMatcher {
     // KRİTİK: Sadece gerçekten kelime algılandıysa ve confidence yeterliyse timeout başlat
     // Sessizlik durumunda (çok düşük confidence) timeout başlatma
     // Partial match varsa timeout başlatma - kullanıcı hala kelimeyi söylüyor
-    const MIN_CONFIDENCE_FOR_TIMEOUT = 0.45; // Minimum confidence threshold (performans için 0.45)
+    // MOBİL İÇİN ÖZEL: Mobilde timeout için daha düşük confidence
+    const MIN_CONFIDENCE_FOR_TIMEOUT = isMobile ? 0.35 : 0.45; // Mobil: 0.35, PC: 0.45
     
     // Eğer çok düşük benzerlik varsa (0.15'ten az) VE confidence yeterliyse (0.3+) VE 10 saniye geçtiyse pozisyonu ilerlet
     // DAHA AKILLI - sadece gerçekten takılı kalırsa ve gerçekten kelime algılandıysa ilerlet
