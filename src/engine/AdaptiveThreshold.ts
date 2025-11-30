@@ -4,12 +4,12 @@
  * Hata yaparsa düşürür, doğru yaparsa yükseltir
  */
 export class AdaptiveThreshold {
-  private baseThreshold: number = 0.65;
-  private currentThreshold: number = 0.65;
+  private baseThreshold: number = 0.55; // Daha düşük başlangıç (daha hızlı algılama)
+  private currentThreshold: number = 0.55;
   private history: { confidence: number; isCorrect: boolean; timestamp: number }[] = [];
   private readonly WINDOW_SIZE = 10; // Son 10 eşleşmeyi takip et
-  private readonly MIN_THRESHOLD = 0.50; // Minimum threshold (çok esnek)
-  private readonly MAX_THRESHOLD = 0.75; // Maksimum threshold (çok katı)
+  private readonly MIN_THRESHOLD = 0.40; // Minimum threshold (çok esnek - hızlı algılama)
+  private readonly MAX_THRESHOLD = 0.70; // Maksimum threshold (daha esnek)
 
   /**
    * Threshold'u ayarla - son eşleşmeye göre
@@ -33,15 +33,18 @@ export class AdaptiveThreshold {
     if (recentHistory.length >= 3) {
       const recentAccuracy = recentHistory.filter(h => h.isCorrect).length / recentHistory.length;
       
-      // Eğer çok hata yapıyorsa threshold'u düşür (daha esnek)
+      // Eğer çok hata yapıyorsa threshold'u düşür (daha esnek) - DAHA YAVAŞ
       if (recentAccuracy < 0.4) {
-        this.currentThreshold = Math.max(this.MIN_THRESHOLD, this.currentThreshold - 0.05);
-        console.log('📉 Threshold düşürüldü (çok hata):', this.currentThreshold);
+        this.currentThreshold = Math.max(this.MIN_THRESHOLD, this.currentThreshold - 0.02); // 0.05 -> 0.02 (daha yavaş)
+        // Log azaltıldı - performans için
+        if (this.currentThreshold <= this.MIN_THRESHOLD) {
+          // Minimum'a ulaştıysa log yok
+        }
       }
       // Eğer çok doğru yapıyorsa threshold'u yükselt (daha katı)
       else if (recentAccuracy > 0.8) {
-        this.currentThreshold = Math.min(this.MAX_THRESHOLD, this.currentThreshold + 0.02);
-        console.log('📈 Threshold yükseltildi (çok doğru):', this.currentThreshold);
+        this.currentThreshold = Math.min(this.MAX_THRESHOLD, this.currentThreshold + 0.01); // 0.02 -> 0.01 (daha yavaş)
+        // Log azaltıldı - performans için
       }
       // Orta seviyede sabit tut
       else {

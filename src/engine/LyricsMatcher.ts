@@ -152,8 +152,8 @@ export class LyricsMatcher {
       }
     }
 
-    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan
-    if (bestMatch && bestMatch.similarity >= dynamicThreshold && confidence >= 0.3) {
+    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - DAHA ESNEK (HIZLI ALGILAMA)
+    if (bestMatch && bestMatch.similarity >= dynamicThreshold && confidence >= 0.2) { // 0.3 -> 0.2 (daha esnek)
       const matchIndex = bestMatch.index;
       
       // POZİSYON ATLAMASINI SINIRLA
@@ -246,10 +246,10 @@ export class LyricsMatcher {
     // Adaptive threshold'u güncelle
     this.adaptiveThreshold.adjustThreshold(confidence, false);
     
-    // Eğer çok düşük benzerlik varsa (0.15'ten az) ve 2 saniye geçtiyse pozisyonu ilerlet
-    // Bu akışı bozmamak için kritik - ama daha uzun süre bekle
+    // Eğer çok düşük benzerlik varsa (0.20'den az) ve 1.5 saniye geçtiyse pozisyonu ilerlet
+    // DAHA HIZLI İLERLEME - akışı koru ama daha hızlı
     const timeSinceLastMatch = now - this.lastMatchTime;
-    if (similarity < 0.15 && timeSinceLastMatch > 2000) {
+    if (similarity < 0.20 && timeSinceLastMatch > 1500) { // 0.15 -> 0.20, 2000 -> 1500 (daha hızlı)
       console.log('⏩ Düşük benzerlik + timeout: Pozisyon ilerletiliyor (akış korunuyor)');
       this._currentPosition = Math.min(this._currentPosition + 1, this.lyrics.length);
       this.lastMatchTime = now;
