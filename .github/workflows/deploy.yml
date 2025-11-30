@@ -29,12 +29,30 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed"
+
+      - name: Type check
+        run: |
+          echo "🔍 Running TypeScript type check..."
+          npm run type-check
+          echo "✅ Type check passed"
 
       - name: Build
-        run: npm run build
+        run: |
+          echo "🏗️ Building application..."
+          npm run build
+          echo "✅ Build completed"
         env:
           NODE_ENV: production
+
+      - name: Check build output
+        run: |
+          echo "📂 Checking build output..."
+          ls -la dist/ || echo "❌ dist directory not found"
+          echo "✅ Build output check completed"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
