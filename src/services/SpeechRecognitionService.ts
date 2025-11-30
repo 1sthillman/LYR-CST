@@ -424,6 +424,9 @@ export class SpeechRecognitionService {
                 // Final results için daha yüksek confidence (kesin algılama için)
                 const finalConfidence = result.isFinal ? Math.max(confidence, 0.8) : Math.max(confidence, 0.7);
                 
+                // DETAYLI LOG - Algılanan kelimeyi logla
+                console.log(`🎤 [SPEECH] Kelime algılandı: "${cleanWord}" | Confidence: ${finalConfidence.toFixed(2)} | Type: ${result.isFinal ? 'FINAL' : 'INTERIM'} | Original: "${word}"`);
+                
                 // Callback'e gönder - ANLIK İŞARETLEME (INTERIM VE FINAL)
                 // Interim results anlık algılama için kritik - hemen gönder
                 this.callback!(cleanWord, finalConfidence);
