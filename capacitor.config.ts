@@ -10,6 +10,14 @@ const config: CapacitorConfig = {
     url: 'https://1sthillman.github.io/LYR-CST/',
     cleartext: false, // HTTPS kullan
   },
+  // Android izinleri - kesintisiz dinleme için (dummy.md)
+  android: {
+    permissions: [
+      'RECORD_AUDIO',
+      'FOREGROUND_SERVICE',
+      'WAKE_LOCK',
+    ],
+  },
   plugins: {
     CapacitorSQLite: {
       iosDatabaseLocation: 'Library/CapacitorDatabase',

@@ -11,6 +11,7 @@ export class DummyRecorderService {
   private dummyChunks: Blob[] = [];
   private restartTimeout: NodeJS.Timeout | null = null;
   private keepAliveInterval: NodeJS.Timeout | null = null;
+  private wakeLock: any = null; // Wake Lock - ekran kapansa bile devam et
 
   /**
    * "Ses kaydı alıyormuşuz gibi" başlat
@@ -61,27 +62,36 @@ export class DummyRecorderService {
         }
       };
 
-      // 4. Hata olursa sessizce tekrar başlat
+      // 4. Hata olursa OTOMATIK YENIDEN BASLAT (dummy.md'deki gibi: 500ms sonra)
       this.mediaRecorder.onerror = (error) => {
-        console.error('❌ [DUMMY] Recorder hatası:', error);
+        console.warn('⚠️ [DUMMY] Recorder hatası, 500ms sonra yeniden başlatılacak...', error);
         if (this.isRecording) {
-          this.restart();
+          setTimeout(() => this.restart(), 500);
         }
       };
 
-      // 5. Stop olduğunda tekrar başlat (Android kapatmaya çalışırsa)
+      // 5. Stop olduğunda HEMEN yeniden başlat (Android kapatmaya çalışırsa)
+      // dummy.md'deki gibi: onstop'da hemen restart (100ms)
       this.mediaRecorder.onstop = () => {
         if (this.isRecording) {
-          console.warn('⚠️ [DUMMY] Recorder durdu, otomatik yeniden başlatılıyor...');
-          this.restart();
+          console.warn('⚠️ [DUMMY] Recorder durduruldu, HEMEN yeniden başlatılıyor...');
+          // Hemen restart - 100ms bekleme (dummy.md'deki gibi)
+          setTimeout(() => {
+            if (this.isRecording) {
+              this.start().catch(console.error);
+            }
+          }, 100);
         }
       };
 
-      // 6. Her 50ms'de bir dummy data üret (Android'e sürekli sinyal - kesintisiz dinleme için)
+      // 6. Wake Lock al (ekran kapansa bile devam et)
+      await this.acquireWakeLock();
+
+      // 7. Her 50ms'de bir dummy data üret (Android'e sürekli sinyal - kesintisiz dinleme için)
       // ChatGPT/Grok gibi sistemlerde mikrofon sürekli açık, daha sık sinyal gerekli
       this.mediaRecorder.start(50);
 
-      // 7. Keep-alive mekanizması: Her 5 saniyede bir kontrol et
+      // 8. Keep-alive mekanizması: Her 5 saniyede bir kontrol et
       this.keepAliveInterval = setInterval(() => {
         if (this.mediaRecorder) {
           const state = this.mediaRecorder.state;
@@ -114,6 +124,7 @@ export class DummyRecorderService {
 
   /**
    * Android'in sessizlik algılamasını kır - otomatik yeniden başlat
+   * dummy.md'deki gibi: 500ms sonra restart
    */
   private restart(): void {
     if (!this.isRecording) {
@@ -125,13 +136,13 @@ export class DummyRecorderService {
       clearTimeout(this.restartTimeout);
     }
     
-    console.warn('⚠️ [DUMMY] Recorder durdu, yeniden başlatılıyor...');
+    console.warn('⚠️ [DUMMY] Recorder durdu, 500ms sonra yeniden başlatılacak...');
     
     this.restartTimeout = setTimeout(async () => {
       try {
         await this.stop();
-        // Kısa bir bekleme sonrası tekrar başlat
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Kısa bir bekleme sonrası tekrar başlat (dummy.md'deki gibi)
+        await new Promise(resolve => setTimeout(resolve, 100));
         await this.start();
       } catch (error) {
         console.error('❌ [DUMMY] Restart hatası:', error);
@@ -140,7 +151,23 @@ export class DummyRecorderService {
           setTimeout(() => this.restart(), 1000);
         }
       }
-    }, 200);
+    }, 500); // dummy.md'deki gibi 500ms
+  }
+
+  /**
+   * Wake Lock al - ekran kapansa bile devam et
+   * dummy.md'deki gibi: screen wake lock
+   */
+  private async acquireWakeLock(): Promise<void> {
+    if ('wakeLock' in navigator) {
+      try {
+        this.wakeLock = await (navigator as any).wakeLock.request('screen');
+        console.log('🔒 [DUMMY] Wake Lock alındı - ekran kapansa bile devam edecek');
+      } catch (error) {
+        console.warn('⚠️ [DUMMY] Wake Lock alınamadı:', error);
+        // Wake Lock olmadan da devam et
+      }
+    }
   }
 
   /**
@@ -176,6 +203,17 @@ export class DummyRecorderService {
           track.stop();
           track.enabled = false;
         });
+      }
+      
+      // Wake Lock bırak
+      if (this.wakeLock) {
+        try {
+          await this.wakeLock.release();
+          console.log('🔓 [DUMMY] Wake Lock bırakıldı');
+        } catch (error) {
+          console.warn('⚠️ [DUMMY] Wake Lock bırakılamadı:', error);
+        }
+        this.wakeLock = null;
       }
       
       // Temizlik

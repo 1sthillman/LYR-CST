@@ -374,6 +374,31 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     };
   }, [isListening]);
 
+  // Ekran arkaya alındığında bile devam et (dummy.md'deki gibi)
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (document.hidden && isListening) {
+        console.log('📱 [PLAYER] Ekran arkaya alındı ama mikrofon AÇIK kalacak');
+        // Wake Lock sayesinde mikrofon açık kalacak
+      } else if (!document.hidden && isListening) {
+        // Geri geldiğinde kontrol et - dummy recorder hala aktif mi?
+        if (isAndroid() && !dummyRecorderService.isActive()) {
+          console.warn('⚠️ [PLAYER] Mikrofon düştü, tekrar bağlanıyor...');
+          toast.error('⚠️ Mikrofon düştü, tekrar bağlanıyor...', { duration: 2000 });
+          try {
+            await dummyRecorderService.start();
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (error) {
+            console.error('❌ [PLAYER] Mikrofon tekrar bağlanamadı:', error);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [isListening]);
+
   return (
     <div className="min-h-screen relative">
       {/* Fullscreen Glass Panel */}
