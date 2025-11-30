@@ -38,11 +38,19 @@ export class SpeechRecognitionService {
       }
 
       console.log('✅ Web Speech API bulundu');
+      console.log('🔍 [SPEECH] Web Speech API detaylı kontrol:');
+      console.log('🔍 [SPEECH] window.SpeechRecognition:', typeof (window as any).SpeechRecognition);
+      console.log('🔍 [SPEECH] window.webkitSpeechRecognition:', typeof (window as any).webkitSpeechRecognition);
+      console.log('🔍 [SPEECH] navigator.userAgent:', navigator.userAgent);
+      console.log('🔍 [SPEECH] navigator.mediaDevices:', typeof navigator.mediaDevices);
+      console.log('🔍 [SPEECH] navigator.mediaDevices.getUserMedia:', typeof navigator.mediaDevices?.getUserMedia);
       
       // MOBİL TARAYICI KONTROLÜ (global - tüm fonksiyon boyunca kullanılacak)
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       if (isMobile) {
         console.log('📱 Mobil tarayıcı tespit edildi - telefon görüşmesi gibi kesintisiz dinleme aktif');
+        console.warn('⚠️ [SPEECH] ANDROID WEBVIEW UYARISI: Android WebView\'de Web Speech API desteği çok sınırlı olabilir!');
+        console.warn('⚠️ [SPEECH] Eğer onresult event\'i tetiklenmiyorsa, Android WebView Web Speech API\'yi desteklemiyor olabilir.');
       }
 
       // ÖNCE: Eski recognition instance'ını temizle (memory leak önleme)
@@ -58,14 +66,27 @@ export class SpeechRecognitionService {
 
       // Konuşma tanıma örneği oluştur
       console.log('🔧 [SPEECH] SpeechRecognition instance oluşturuluyor...');
+      console.log('🔧 [SPEECH] SpeechRecognition constructor:', SpeechRecognition);
+      console.log('🔧 [SPEECH] SpeechRecognition prototype:', SpeechRecognition.prototype);
+      
       let recognition: SpeechRecognition;
       try {
         recognition = new SpeechRecognition();
-        console.log('✅ [SPEECH] SpeechRecognition instance oluşturuldu:', recognition);
+        console.log('✅ [SPEECH] SpeechRecognition instance oluşturuldu');
         console.log('📱 [SPEECH] Recognition instance type:', typeof recognition);
-        console.log('📱 [SPEECH] Recognition instance constructor:', recognition.constructor);
+        console.log('📱 [SPEECH] Recognition instance constructor:', recognition.constructor?.name);
+        console.log('📱 [SPEECH] Recognition instance toString:', recognition.toString());
+        
+        // Instance'ın tüm property'lerini kontrol et
+        console.log('📱 [SPEECH] Recognition instance properties:', Object.keys(recognition));
+        console.log('📱 [SPEECH] Recognition.continuous (default):', recognition.continuous);
+        console.log('📱 [SPEECH] Recognition.interimResults (default):', recognition.interimResults);
+        console.log('📱 [SPEECH] Recognition.lang (default):', recognition.lang);
       } catch (createError: any) {
         console.error('❌ [SPEECH] SpeechRecognition instance oluşturulamadı:', createError);
+        console.error('❌ [SPEECH] Error name:', createError?.name);
+        console.error('❌ [SPEECH] Error message:', createError?.message);
+        console.error('❌ [SPEECH] Error stack:', createError?.stack);
         throw new Error(`Speech Recognition instance oluşturulamadı: ${createError.message}`);
       }
       
