@@ -133,7 +133,11 @@ export class SpeechRecognitionService {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        // Log azaltıldı - performans için
+        // MOBİLDE TÜM RESULT EVENT'LERİNİ LOGLA (DEBUG İÇİN)
+        const isMobileLocal = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobileLocal) {
+          console.log(`📱 [MOBİL DEBUG] onresult event | Results length: ${event.results.length} | ResultIndex: ${event.resultIndex}`);
+        }
         this.handleResult(event);
       };
 
@@ -432,12 +436,17 @@ export class SpeechRecognitionService {
           // Bu yüzden tekrar kontrol ediyoruz
           const isMobileLocal = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
           
-          // Confidence threshold - mobilde ÇOK daha esnek (Türkçe algılama için kritik)
+          // Confidence threshold - mobilde HİÇBİR THRESHOLD YOK (TÜM KELİMELERİ KABUL ET)
           let minConfidence: number;
           if (result.isFinal) {
-            minConfidence = isMobileLocal ? 0.20 : 0.40; // Final: Mobil 0.20 (çok agresif), PC 0.40
+            minConfidence = isMobileLocal ? 0.01 : 0.40; // Final: Mobil 0.01 (neredeyse hiç threshold yok), PC 0.40
           } else {
-            minConfidence = isMobileLocal ? 0.15 : 0.35; // Interim: Mobil 0.15 (çok agresif), PC 0.35
+            minConfidence = isMobileLocal ? 0.01 : 0.35; // Interim: Mobil 0.01 (neredeyse hiç threshold yok), PC 0.35
+          }
+          
+          // MOBİLDE TÜM KELİMELERİ LOGLA (DEBUG İÇİN)
+          if (isMobileLocal && transcript.length > 0) {
+            console.log(`📱 [MOBİL DEBUG] Transcript: "${transcript}" | Confidence: ${confidence.toFixed(3)} | isFinal: ${result.isFinal} | MinConfidence: ${minConfidence} | Geçti: ${confidence >= minConfidence}`);
           }
 
           if (transcript.length > 0 && confidence >= minConfidence) {
