@@ -126,6 +126,10 @@ export class SpeechRecognitionService {
       // Event handler'lar
       recognition.onstart = () => {
         console.log('✅ [SPEECH] Recognition başladı! Kesintisiz dinleme aktif...');
+        console.log('📱 [SPEECH] Recognition state:', (recognition as any).state);
+        console.log('📱 [SPEECH] Recognition lang:', recognition.lang);
+        console.log('📱 [SPEECH] Recognition continuous:', recognition.continuous);
+        console.log('📱 [SPEECH] Recognition interimResults:', recognition.interimResults);
         this.lastProcessedIndex = -1;
         this.processedWords.clear(); // Web ile aynı - her başlangıçta temizle
         // onstart olduğunda restart zamanını sıfırla - yeni başlangıç
@@ -133,18 +137,30 @@ export class SpeechRecognitionService {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
+        console.log('🎤 [SPEECH] ⚡⚡⚡ onresult event tetiklendi! ⚡⚡⚡ Results length:', event.results.length, '| ResultIndex:', event.resultIndex);
         // MOBİLDE TÜM RESULT EVENT'LERİNİ LOGLA (DEBUG İÇİN)
         const isMobileLocal = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         if (isMobileLocal) {
           console.log(`📱 [MOBİL DEBUG] onresult event | Results length: ${event.results.length} | ResultIndex: ${event.resultIndex}`);
+          // Her result'u detaylı logla
+          for (let i = 0; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result && result.length > 0) {
+              const transcript = result[0].transcript;
+              const confidence = result[0].confidence || 0;
+              console.log(`📱 [MOBİL SPEECH] Result[${i}]: "${transcript}" | Confidence: ${confidence.toFixed(3)} | isFinal: ${result.isFinal}`);
+            }
+          }
         }
         this.handleResult(event);
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.log('⚠️ [SPEECH] onerror event:', event.error, '| State:', (recognition as any).state);
         // Sessizlik hatası - devam et (susulduğunda kapanmaz)
         if (event.error === 'no-speech') {
-          return; // Sessizlik normal, devam et - log yok
+          console.log('🔇 [SPEECH] Sessizlik tespit edildi (normal)');
+          return; // Sessizlik normal, devam et
         }
         
         // İzin reddedildi - gerçek hata
@@ -202,6 +218,7 @@ export class SpeechRecognitionService {
       };
 
       recognition.onend = () => {
+        console.log('🛑 [SPEECH] onend event tetiklendi! State:', (this.recognition as any)?.state, '| isListening:', this.isListening);
         // KESİNTİSİZ DİNLEME - ChatGPT/Grok gibi sistemlerde onend event'i ignore edilir
         // continuous: true ile çalışırken onend normal bir durum, restart yapmaya GEREK YOK
         // Sadece gerçek hatalarda (onerror) restart yapılır
@@ -444,18 +461,25 @@ export class SpeechRecognitionService {
             minConfidence = isMobileLocal ? 0.01 : 0.35; // Interim: Mobil 0.01 (neredeyse hiç threshold yok), PC 0.35
           }
           
-          // MOBİLDE TÜM KELİMELERİ LOGLA (DEBUG İÇİN)
-          if (isMobileLocal && transcript.length > 0) {
-            console.log(`📱 [MOBİL DEBUG] Transcript: "${transcript}" | Confidence: ${confidence.toFixed(3)} | isFinal: ${result.isFinal} | MinConfidence: ${minConfidence} | Geçti: ${confidence >= minConfidence}`);
+          // MOBİLDE TÜM KELİMELERİ LOGLA (DEBUG İÇİN) - HER ZAMAN LOGLA
+          if (isMobileLocal) {
+            console.log(`📱 [MOBİL DEBUG] Transcript: "${transcript}" | Length: ${transcript.length} | Confidence: ${confidence.toFixed(3)} | isFinal: ${result.isFinal} | MinConfidence: ${minConfidence} | Geçti: ${confidence >= minConfidence}`);
+          } else {
+            console.log(`💻 [PC DEBUG] Transcript: "${transcript}" | Length: ${transcript.length} | Confidence: ${confidence.toFixed(3)} | isFinal: ${result.isFinal} | MinConfidence: ${minConfidence} | Geçti: ${confidence >= minConfidence}`);
           }
 
+          // KRİTİK: Transcript boş değilse ve confidence yeterliyse işle
           if (transcript.length > 0 && confidence >= minConfidence) {
+            console.log(`✅ [SPEECH] Transcript geçti! Transcript: "${transcript}" | Confidence: ${confidence.toFixed(3)} >= ${minConfidence} | isFinal: ${result.isFinal}`);
+            
             // Kelimeleri ayır ve temizle
             const words = transcript.split(/\s+/).filter((w: string) => w.length > 0);
+            console.log(`📝 [SPEECH] Kelimelere ayrıldı: ${words.length} kelime | Words:`, words);
             
             // Her kelimeyi işle - ANLIK İŞARETLEME İÇİN (RAP İÇİN HIZLI)
             words.forEach((word: string, wordIndex: number) => {
               const cleanWord = this.cleanWord(word);
+              console.log(`🔍 [SPEECH] Kelime işleniyor: "${word}" -> "${cleanWord}" | Index: ${wordIndex}`);
               
               if (cleanWord.length > 0) {
                 // Unique key oluştur: resultIndex-wordIndex-word
@@ -463,6 +487,7 @@ export class SpeechRecognitionService {
                 
                 // Duplicate kontrolü - sadece final results için
                 if (this.processedWords.has(wordKey) && result.isFinal) {
+                  console.log(`⏭️ [SPEECH] Kelime zaten işlenmiş, atlanıyor: "${cleanWord}"`);
                   return;
                 }
 
@@ -475,16 +500,22 @@ export class SpeechRecognitionService {
                 
                 // DETAYLI LOG - Algılanan kelimeyi logla (mobilde daha detaylı)
                 const logPrefix = isMobileLocal ? '📱 [MOBİL SPEECH]' : '🎤 [SPEECH]';
-                console.log(`${logPrefix} Kelime algılandı: "${cleanWord}" | Confidence: ${finalConfidence.toFixed(2)} | Type: ${result.isFinal ? 'FINAL' : 'INTERIM'} | Original: "${word}" | Lang: ${this.recognition?.lang || 'unknown'}`);
+                console.log(`${logPrefix} ✅✅✅ KELİME ALGILANDI VE CALLBACK ÇAĞRILIYOR: "${cleanWord}" | Confidence: ${finalConfidence.toFixed(2)} | Type: ${result.isFinal ? 'FINAL' : 'INTERIM'} | Original: "${word}" | Lang: ${this.recognition?.lang || 'unknown'}`);
                 
-                // Callback'e gönder - ANLIK İŞARETLEME (INTERIM VE FINAL)
-                // Interim results anlık algılama için kritik - hemen gönder
-                this.callback!(cleanWord, finalConfidence);
+                // CALLBACK ÇAĞRISI - KRİTİK NOKTA
+                try {
+                  this.callback!(cleanWord, finalConfidence);
+                  console.log(`✅ [SPEECH] Callback başarıyla çağrıldı: "${cleanWord}"`);
+                } catch (callbackError) {
+                  console.error(`❌ [SPEECH] Callback hatası:`, callbackError);
+                }
                 
                 // İşlenen kelimeyi kaydet (sadece final results için)
                 if (result.isFinal) {
                   this.processedWords.add(wordKey);
                 }
+              } else {
+                console.log(`⚠️ [SPEECH] Temizlenmiş kelime boş, atlanıyor: "${word}" -> "${cleanWord}"`);
               }
             });
 
@@ -495,6 +526,8 @@ export class SpeechRecognitionService {
                 this.processedWords = new Set(wordsArray.slice(-200));
               }
             }
+          } else {
+            console.log(`❌ [SPEECH] Transcript geçmedi! Transcript: "${transcript}" | Length: ${transcript.length} | Confidence: ${confidence.toFixed(3)} < ${minConfidence} | isFinal: ${result.isFinal}`);
           }
         }
       }
