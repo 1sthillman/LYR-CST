@@ -682,8 +682,13 @@ ${logs || '(Henüz log yok)'}
         }
       }
 
-      // 6. Konuşma tanımayı başlat - HER PLATFORMDA ÇALIŞIR (Web ve Android)
+      // 6. Konuşma tanımayı başlat - ANDROID WEBVIEW'DE WEB SPEECH API ÇALIŞMIYOR
+      // Android WebView'de onresult event'i hiç tetiklenmiyor
+      // Bu yüzden native Android Speech Recognition kullanılmalı (henüz implement edilmedi)
       console.log('🎤 [PLAYER] Speech Recognition başlatılıyor...');
+      console.warn('⚠️ [PLAYER] ANDROID WEBVIEW UYARISI: Web Speech API\'nin onresult event\'i tetiklenmiyor!');
+      console.warn('⚠️ [PLAYER] Native Android Speech Recognition implement edilmeli.');
+      
       await speechRecognitionService.initialize(
         handleWordDetected,
         (error: Error) => {
@@ -693,6 +698,7 @@ ${logs || '(Henüz log yok)'}
         }
       );
       console.log('✅ [PLAYER] Speech Recognition başlatıldı - Mikrofon aktif!');
+      console.warn('⚠️ [PLAYER] NOT: Android WebView\'de onresult event\'i tetiklenmeyebilir!');
       
       // Debug: Karaoke başladı
       addDebugLog(`[KARAOKE START] Şarkı: ${songTitle} | Sanatçı: ${artist} | Kelime Sayısı: ${words.length}`);

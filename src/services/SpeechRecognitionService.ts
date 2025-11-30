@@ -3,6 +3,8 @@
  * Gerçek zamanlı kelime tanıma yapar - herhangi bir kelimeyi tanıyabilir
  * Interim ve final sonuçları kullanır - anlık işaretleme için
  * Sürekli dinleme garantisi - hiç kapanmaz
+ * 
+ * NOT: Android WebView'de Web Speech API çalışmıyor - Native Android Speech Recognition kullanılmalı
  */
 export class SpeechRecognitionService {
   private recognition: SpeechRecognition | null = null;
