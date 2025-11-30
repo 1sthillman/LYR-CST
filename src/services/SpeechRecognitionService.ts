@@ -11,12 +11,14 @@ export class SpeechRecognitionService {
   private processedWords: Set<string> = new Set(); // İşlenen kelimeleri takip et (duplicate önleme)
   private lastProcessedIndex: number = -1; // Son işlenen result index'i
   private restartTimeout: number | null = null; // Restart timeout'u
+  private permissionCheckInterval: NodeJS.Timeout | null = null; // Permissions kontrolü
 
   /**
    * Servisi başlatır ve modeli yükler
    */
   async initialize(
-    callback: (word: string, confidence: number) => void
+    callback: (word: string, confidence: number) => void,
+    onError?: (error: Error) => void
   ): Promise<void> {
     try {
       
@@ -43,10 +45,23 @@ export class SpeechRecognitionService {
         console.log('📱 Mobil tarayıcı tespit edildi - telefon görüşmesi gibi kesintisiz dinleme aktif');
       }
 
+      // ÖNCE: Eski recognition instance'ını temizle (memory leak önleme)
+      if (this.recognition) {
+        try {
+          const oldRecognition = this.recognition;
+          oldRecognition.stop();
+        } catch (e) {
+          // Ignore
+        }
+        this.recognition = null;
+      }
+
       // Konuşma tanıma örneği oluştur
       const recognition = new SpeechRecognition();
       this.recognition = recognition;
       this.callback = callback;
+      (this as any).onErrorCallback = onError; // Error callback'i sakla
+      (this as any).onErrorCallback = onError; // Error callback'i sakla
 
       // AYARLAR - ANLIK İŞARETLEME VE SÜREKLI DİNLEME
       recognition.continuous = true; // Sürekli dinleme
@@ -101,18 +116,30 @@ export class SpeechRecognitionService {
         }
         if (event.error === 'not-allowed') {
           console.error('❌ [SPEECH] Mikrofon erişimi reddedildi!');
+          // Toast için callback'e bildir
+          if (this.callback) {
+            // Error callback - özel bir flag ile
+            (this as any).onErrorCallback?.(new Error('Mikrofon erişimi reddedildi'));
+          }
           throw new Error('Mikrofon erişimi reddedildi');
         }
-        if (event.error === 'aborted') {
-          console.warn('⚠️ [SPEECH] Recognition aborted - yeniden başlatılıyor...');
+        if (event.error === 'aborted' || event.error === 'network') {
+          console.warn('⚠️ [SPEECH] Recognition aborted/network - 500ms sonra yeniden başlatılıyor...');
+          // Toast için callback'e bildir
+          if (this.callback) {
+            (this as any).onErrorCallback?.(new Error('Mikrofon hatası, yeniden bağlanıyor...'));
+          }
           if (this.isListening && this.recognition) {
-            this.restartRecognition();
+            setTimeout(() => this.restartRecognition(), 500);
           }
           return;
         }
         // Diğer hatalarda yeniden başlat
         if (this.isListening && this.recognition) {
           console.warn('🔄 [SPEECH] Hata nedeniyle yeniden başlatılıyor...', event.error);
+          if (this.callback) {
+            (this as any).onErrorCallback?.(new Error(`Mikrofon hatası: ${event.error}`));
+          }
           this.restartRecognition();
         }
       };
@@ -189,6 +216,9 @@ export class SpeechRecognitionService {
         
         console.log('✅ Recognition başlatıldı, isListening:', this.isListening);
         console.log('📱 Kesintisiz dinleme aktif - telefon görüşmesi gibi çalışıyor');
+
+        // Permissions kontrolü başlat (her 10 saniyede bir)
+        this.startPermissionMonitoring();
       } catch (startError: any) {
         // "already started" hatası normal
         if (startError?.message?.includes('already') || 
@@ -264,6 +294,35 @@ export class SpeechRecognitionService {
         }
       }
     }, 5000); // 5 saniye bekleme - kesintisiz dinleme için
+  }
+
+  /**
+   * Permissions monitoring başlat
+   */
+  private startPermissionMonitoring(): void {
+    // Önceki interval'i temizle
+    if (this.permissionCheckInterval) {
+      clearInterval(this.permissionCheckInterval);
+    }
+
+    // Permissions API destekleniyorsa kontrol et
+    if ('permissions' in navigator && 'query' in navigator.permissions) {
+      this.permissionCheckInterval = setInterval(async () => {
+        try {
+          const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          
+          if (permission.state === 'denied') {
+            console.error('❌ [SPEECH] Mikrofon izni iptal edilmiş!');
+            (this as any).onErrorCallback?.(new Error('Mikrofon izni iptal edilmiş. Lütfen tarayıcı ayarlarından izin verin.'));
+            this.stop();
+          } else if (permission.state === 'prompt') {
+            // İzin isteniyor - normal durum
+          }
+        } catch (error) {
+          // Permissions API desteklenmiyor veya hata - devam et
+        }
+      }, 10000); // Her 10 saniyede bir kontrol
+    }
   }
 
   /**

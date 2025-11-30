@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import speechRecognitionService from '../../services/SpeechRecognitionService';
 import { dummyRecorderService } from '../../services/DummyRecorderService';
+import { audioContextService } from '../../services/AudioContextService';
 import { LyricsMatcher } from '../../engine/LyricsMatcher';
 import { isAndroid } from '../../utils/platform';
 import { dbAdapter } from '../../database/DatabaseAdapter';
@@ -245,10 +246,14 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
         throw new Error(errorMessage);
       }
 
-      // 2. Veritabanını başlat
+      // 2. AudioContext başlat (Android 10+ için kritik - suspended yönetimi)
+      await audioContextService.initialize();
+      console.log('✅ [PLAYER] AudioContext başlatıldı - suspended monitoring aktif');
+
+      // 3. Veritabanını başlat
       await dbAdapter.initialize();
 
-      // 3. DUMMY RECORDER başlat - SADECE NATIVE ANDROID APP İÇİN
+      // 4. DUMMY RECORDER başlat - SADECE NATIVE ANDROID APP İÇİN
       // Web sitesinden (GitHub Pages) çalışıyorsa Capacitor yok, bu yüzden çalışmaz
       // Bu Android'e "ses kaydediyorum" sinyali verir, böylece mikrofon kapanmaz
       if (isAndroid()) {
@@ -266,7 +271,7 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
         console.log('🌐 [PLAYER] Web sitesi tespit edildi - Dummy recorder gerek yok (mikrofon zaten stabil)');
       }
 
-      // 4. Müzik varsa oynat
+      // 5. Müzik varsa oynat
       if (audioFilePath) {
         try {
           await audioControlService.loadSong(audioFilePath);
@@ -276,9 +281,16 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
         }
       }
 
-      // 5. Konuşma tanımayı başlat - HER PLATFORMDA ÇALIŞIR (Web ve Android)
+      // 6. Konuşma tanımayı başlat - HER PLATFORMDA ÇALIŞIR (Web ve Android)
       console.log('🎤 [PLAYER] Speech Recognition başlatılıyor...');
-      await speechRecognitionService.initialize(handleWordDetected);
+      await speechRecognitionService.initialize(
+        handleWordDetected,
+        (error: Error) => {
+          // Error callback - toast göster
+          toast.error(error.message, { duration: 3000 });
+          setError(error.message);
+        }
+      );
       console.log('✅ [PLAYER] Speech Recognition başlatıldı - Mikrofon aktif!');
       
       matcherRef.current.reset();
@@ -318,8 +330,11 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     
     // 2. Müziği durdur
     audioControlService.stop();
+
+    // 3. AudioContext monitoring durdur
+    audioContextService.stopMonitoring();
     
-    // 3. Dummy recorder'ı durdur - SADECE ANDROID'DE
+    // 4. Dummy recorder'ı durdur - SADECE ANDROID'DE
     if (isAndroid()) {
       try {
         await dummyRecorderService.stop();
