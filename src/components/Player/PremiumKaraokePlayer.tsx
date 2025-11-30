@@ -133,6 +133,7 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     console.log = (...args: any[]) => {
       originalLog.apply(console, args);
       const logMessage = formatLogMessage(args);
+      // HER ZAMAN log ekle - isListening kontrolü yok
       addDebugLog(`[LOG] ${logMessage}`);
     };
 
@@ -140,6 +141,7 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     console.error = (...args: any[]) => {
       originalError.apply(console, args);
       const logMessage = formatLogMessage(args);
+      // HER ZAMAN log ekle - isListening kontrolü yok
       addDebugLog(`[ERROR] ${logMessage}`);
     };
 
@@ -147,6 +149,7 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     console.warn = (...args: any[]) => {
       originalWarn.apply(console, args);
       const logMessage = formatLogMessage(args);
+      // HER ZAMAN log ekle - isListening kontrolü yok
       addDebugLog(`[WARN] ${logMessage}`);
     };
 
@@ -154,6 +157,7 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     console.info = (...args: any[]) => {
       originalInfo.apply(console, args);
       const logMessage = formatLogMessage(args);
+      // HER ZAMAN log ekle - isListening kontrolü yok
       addDebugLog(`[INFO] ${logMessage}`);
     };
 
@@ -161,11 +165,14 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     console.debug = (...args: any[]) => {
       originalDebug.apply(console, args);
       const logMessage = formatLogMessage(args);
+      // HER ZAMAN log ekle - isListening kontrolü yok
       addDebugLog(`[DEBUG] ${logMessage}`);
     };
 
     // İlk log - console override aktif
     originalLog('🔧 [DEBUG] Console override aktif - Tüm loglar yakalanıyor');
+    // Test logu - console override'ın çalıştığını doğrula
+    addDebugLog('[SYSTEM] Console override başlatıldı - Tüm loglar yakalanacak');
 
     // Cleanup yapma - console override kalıcı olmalı
     return () => {
@@ -178,6 +185,16 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
   // Debug loglarını kopyala
   const copyDebugLogs = useCallback(async () => {
     try {
+      // BÖCEK BUTONUNA TIKLANDIĞINDA ANLIK TEST LOGU EKLE
+      const testTimestamp = new Date().toISOString();
+      addDebugLog(`[TEST] 🐛 Böcek butonuna tıklandı! Timestamp: ${testTimestamp}`);
+      console.log('🐛 [TEST] Böcek butonuna tıklandı - Bu log görünüyorsa console override çalışıyor!');
+      console.error('🐛 [TEST ERROR] Bu bir test error logu - görünüyorsa console.error override çalışıyor!');
+      console.warn('🐛 [TEST WARN] Bu bir test warn logu - görünüyorsa console.warn override çalışıyor!');
+      
+      // Biraz bekle - logların eklenmesi için
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const logs = debugLogsRef.current.join('\n');
       
       // Ek bilgiler
@@ -187,6 +204,11 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       const userAgent = navigator.userAgent;
       const platform = isMobile ? 'MOBİL' : 'PC';
+      
+      // Mikrofon stream durumu
+      const stream = (window as any).__microphoneStream as MediaStream | undefined;
+      const streamStatus = stream ? 'AKTİF' : 'YOK';
+      const audioTracks = stream?.getAudioTracks() || [];
       
       const debugInfo = `=== KARAOKE DEBUG LOGS ===
 Şarkı: ${songTitle}
@@ -198,7 +220,10 @@ Platform: ${platform}
 User Agent: ${userAgent}
 Recognition Lang: ${recognitionLang}
 Recognition State: ${recognitionState}
+Mikrofon Stream: ${streamStatus}
+Audio Tracks: ${audioTracks.length}
 Toplam Log Sayısı: ${debugLogsRef.current.length}
+Son Log Zamanı: ${testTimestamp}
 
 === CONSOLE LOGS ===
 ${logs || '(Henüz log yok)'}
