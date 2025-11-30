@@ -6,7 +6,8 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   // GitHub Pages için base path
-  base: process.env.NODE_ENV === 'production' ? '/LYR-CST/' : '/',
+  // Repository adı LYR-CST ise base path '/LYR-CST/' olmalı
+  base: '/LYR-CST/',
   resolve: {
     alias: {
       '@components': path.resolve(__dirname, './src/components'),
