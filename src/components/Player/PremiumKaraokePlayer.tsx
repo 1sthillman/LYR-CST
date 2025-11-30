@@ -176,10 +176,74 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
       setIsLoading(true);
       setError(null);
       
-      // 1. Mikrofon izni kontrolü - HER PLATFORMDA ÇALIŞIR (Web ve Android)
+      // 1. Mikrofon izni kontrolü - MOBİL TARAYICI İÇİN ÖZEL YÖNTEM
       console.log('🎤 [PLAYER] Mikrofon izni isteniyor...');
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('✅ [PLAYER] Mikrofon izni verildi!');
+      
+      // MOBİL TARAYICI İÇİN: Daha detaylı audio constraints
+      // Telefon görüşmesi gibi kesintisiz çalışması için optimize edilmiş ayarlar
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true, // Yankı iptali - telefon görüşmesi gibi
+        noiseSuppression: true, // Gürültü bastırma
+        autoGainControl: true, // Otomatik ses seviyesi
+        sampleRate: 44100, // Yüksek kalite
+        channelCount: 1, // Mono
+      };
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: audioConstraints 
+        });
+        console.log('✅ [PLAYER] Mikrofon izni verildi! Stream aktif:', stream.active);
+        
+        // Stream'in aktif olduğunu kontrol et
+        const audioTracks = stream.getAudioTracks();
+        if (audioTracks.length === 0) {
+          throw new Error('Mikrofon stream\'inde audio track bulunamadı');
+        }
+        
+        // Track'in enabled olduğunu kontrol et
+        const audioTrack = audioTracks[0];
+        if (!audioTrack.enabled) {
+          audioTrack.enabled = true;
+        }
+        
+        console.log('✅ [PLAYER] Audio track durumu:', {
+          enabled: audioTrack.enabled,
+          readyState: audioTrack.readyState,
+          label: audioTrack.label,
+          muted: audioTrack.muted
+        });
+        
+        // Stream'i global olarak sakla (gerekirse)
+        (window as any).__microphoneStream = stream;
+        
+      } catch (error: any) {
+        console.error('❌ [PLAYER] Mikrofon izni hatası:', error);
+        
+        // Detaylı hata mesajı
+        let errorMessage = 'Mikrofon erişimi reddedildi';
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          errorMessage = 'Mikrofon izni reddedildi. Lütfen tarayıcı ayarlarından mikrofon iznini verin.';
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          errorMessage = 'Mikrofon bulunamadı. Lütfen cihazınızda mikrofon olduğundan emin olun.';
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          errorMessage = 'Mikrofon başka bir uygulama tarafından kullanılıyor. Lütfen diğer uygulamaları kapatın.';
+        } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+          errorMessage = 'Mikrofon ayarları desteklenmiyor. Daha basit ayarlarla tekrar deniyoruz...';
+          // Daha basit constraints ile tekrar dene
+          try {
+            const simpleStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('✅ [PLAYER] Basit constraints ile mikrofon açıldı');
+            (window as any).__microphoneStream = simpleStream;
+          } catch (simpleError) {
+            throw new Error(errorMessage);
+          }
+        } else {
+          errorMessage = `Mikrofon hatası: ${error.message || error.name}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
 
       // 2. Veritabanını başlat
       await dbAdapter.initialize();

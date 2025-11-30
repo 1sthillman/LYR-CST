@@ -20,17 +20,28 @@ export class SpeechRecognitionService {
   ): Promise<void> {
     try {
       
-      // Web Speech API kontrolü
+      // Web Speech API kontrolü - MOBİL TARAYICI DESTEĞİ İÇİN
       const SpeechRecognition = 
         (window as any).SpeechRecognition || 
         (window as any).webkitSpeechRecognition;
 
       if (!SpeechRecognition) {
         console.error('❌ Web Speech API bulunamadı!');
-        throw new Error('Tarayıcınız Web Speech API\'yi desteklemiyor');
+        // MOBİL TARAYICI İÇİN: Daha açıklayıcı hata mesajı
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+          throw new Error('Mobil tarayıcınız Web Speech API\'yi desteklemiyor. Lütfen Chrome veya Safari kullanın.');
+        }
+        throw new Error('Tarayıcınız Web Speech API\'yi desteklemiyor. Lütfen Chrome, Edge veya Safari kullanın.');
       }
 
       console.log('✅ Web Speech API bulundu');
+      
+      // MOBİL TARAYICI KONTROLÜ
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        console.log('📱 Mobil tarayıcı tespit edildi - telefon görüşmesi gibi kesintisiz dinleme aktif');
+      }
 
       // Konuşma tanıma örneği oluştur
       const recognition = new SpeechRecognition();
@@ -163,14 +174,38 @@ export class SpeechRecognitionService {
         }
       };
 
-      // Dinlemeyi başlat
+      // Dinlemeyi başlat - MOBİL TARAYICI İÇİN ÖZEL
       console.log('🚀 Recognition başlatılıyor...');
-      recognition.start();
-      this.isListening = true;
-      this.processedWords.clear();
-      this.lastProcessedIndex = -1;
       
-      console.log('✅ Recognition başlatıldı, isListening:', this.isListening);
+      // MOBİL TARAYICI İÇİN: User gesture kontrolü
+      // Bazı mobil tarayıcılarda getUserMedia veya Speech Recognition
+      // sadece kullanıcı etkileşimi (buton tıklama) sonrası çalışır
+      try {
+        recognition.start();
+        this.isListening = true;
+        this.processedWords.clear();
+        this.lastProcessedIndex = -1;
+        (this as any).lastRestartTime = Date.now();
+        
+        console.log('✅ Recognition başlatıldı, isListening:', this.isListening);
+        console.log('📱 Kesintisiz dinleme aktif - telefon görüşmesi gibi çalışıyor');
+      } catch (startError: any) {
+        // "already started" hatası normal
+        if (startError?.message?.includes('already') || 
+            startError?.message?.includes('started') ||
+            startError?.name === 'InvalidStateError') {
+          console.log('ℹ️ Recognition zaten başlatılmış');
+          this.isListening = true;
+          return;
+        }
+        
+        // MOBİL TARAYICI İÇİN: Daha açıklayıcı hata mesajı
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+          throw new Error('Mobil tarayıcıda Speech Recognition başlatılamadı. Lütfen butona tekrar tıklayın veya sayfayı yenileyin.');
+        }
+        throw startError;
+      }
     } catch (error) {
       console.error('❌ Ses tanıma başlatılamadı:', error);
       if (error instanceof Error) {
