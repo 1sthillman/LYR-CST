@@ -105,32 +105,44 @@ export class SpeechRecognitionService {
       };
 
       recognition.onend = () => {
-        // SÜREKLI DİNLEME - Otomatik olarak yeniden başlat (susulduğunda bile)
-        // ÖNEMLİ: onend çok sık tetiklenebilir, agresif kontrol yap
+        // SÜREKLI DİNLEME - continuous: true ile çalışırken onend normal bir durum
+        // ÖNEMLİ: onend çok sık tetiklenebilir, çok agresif kontrol yap
         if (this.isListening && this.recognition) {
+          // ÖNCE: Recognition state'ini kontrol et - eğer hala aktifse restart yapma
+          try {
+            const state = (this.recognition as any).state;
+            if (state === 'listening' || state === 'starting') {
+              // Zaten dinliyor veya başlıyor, onend'i ignore et (normal durum)
+              return;
+            }
+          } catch (e) {
+            // State kontrolü başarısız, devam et
+          }
+          
+          // İKİNCİ: Son restart zamanını kontrol et - çok sık restart önleme
           const lastRestartTime = (this as any).lastRestartTime || 0;
           const timeSinceLastRestart = Date.now() - lastRestartTime;
           
-          // Son restart'tan 3 saniye geçmediyse restart yapma (çok sık restart önleme)
-          if (timeSinceLastRestart < 3000) {
+          // Son restart'tan 5 saniye geçmediyse restart yapma (çok agresif kontrol)
+          if (timeSinceLastRestart < 5000) {
             // Sessizce atla - log yok (performans için)
             return;
           }
           
           (this as any).lastRestartTime = Date.now();
           
-          // Daha uzun bekleme - mikrofon stabilitesi için
+          // ÜÇÜNCÜ: Uzun bekleme sonrası restart - mikrofon stabilitesi için
           setTimeout(() => {
             if (this.isListening && this.recognition) {
-              // Restart yapmadan önce recognition'ın durumunu kontrol et
+              // Restart yapmadan önce tekrar state kontrolü
               try {
-                // Recognition state'ini kontrol et
                 const state = (this.recognition as any).state;
                 if (state === 'listening' || state === 'starting') {
-                  // Zaten dinliyor veya başlıyor, restart yapma
+                  // Zaten dinliyor, restart yapma
                   return;
                 }
                 
+                // Sadece gerçekten durmuşsa restart yap
                 this.recognition.start();
               } catch (error: any) {
                 // "already started" hatası normal, görmezden gel
@@ -143,7 +155,7 @@ export class SpeechRecognitionService {
                 this.restartRecognition();
               }
             }
-          }, 1500); // 1.5 saniye bekleme - mikrofon stabilitesi için
+          }, 2000); // 2 saniye bekleme - mikrofon stabilitesi için
         }
       };
 
@@ -177,25 +189,26 @@ export class SpeechRecognitionService {
     const lastRestartTime = (this as any).lastRestartTime || 0;
     const timeSinceLastRestart = Date.now() - lastRestartTime;
     
-    // Son restart'tan 3 saniye geçmediyse restart yapma
-    if (timeSinceLastRestart < 3000) {
+    // Son restart'tan 5 saniye geçmediyse restart yapma (çok agresif kontrol)
+    if (timeSinceLastRestart < 5000) {
       // Sessizce atla - log yok (performans için)
       return;
     }
     
     (this as any).lastRestartTime = Date.now();
     
-    // Daha uzun delay - mikrofon stabilitesi için
+    // Uzun delay - mikrofon stabilitesi için
     this.restartTimeout = window.setTimeout(() => {
       if (this.isListening && this.recognition) {
         try {
-          // Recognition state'ini kontrol et
+          // ÖNCE: Recognition state'ini kontrol et
           const state = (this.recognition as any).state;
           if (state === 'listening' || state === 'starting') {
             // Zaten dinliyor veya başlıyor, restart yapma
             return;
           }
           
+          // Sadece gerçekten durmuşsa restart yap
           this.recognition.start();
         } catch (error: any) {
           // "already started" hatası normal, görmezden gel
@@ -207,11 +220,11 @@ export class SpeechRecognitionService {
           
           // Hata olursa daha uzun bekle ve tekrar dene
           if (this.isListening) {
-            setTimeout(() => this.restartRecognition(), 3000); // 3 saniye bekleme
+            setTimeout(() => this.restartRecognition(), 5000); // 5 saniye bekleme
           }
         }
       }
-    }, 2000); // 2 saniye bekleme - mikrofon stabilitesi için
+    }, 3000); // 3 saniye bekleme - mikrofon stabilitesi için
   }
 
   /**

@@ -77,8 +77,9 @@ export class DummyRecorderService {
         }
       };
 
-      // 6. Her 200ms'de bir dummy data üret (Android'e sürekli sinyal)
-      this.mediaRecorder.start(200);
+      // 6. Her 100ms'de bir dummy data üret (Android'e sürekli sinyal - daha sık)
+      // Daha sık data üretmek Android'in mikrofonu kapatmasını daha iyi önler
+      this.mediaRecorder.start(100);
 
       // 7. Keep-alive mekanizması: Her 5 saniyede bir kontrol et
       this.keepAliveInterval = setInterval(() => {
