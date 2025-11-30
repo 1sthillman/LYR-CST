@@ -4,6 +4,8 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.os.Build;
+import android.util.Log;
+import android.webkit.ConsoleMessage;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
@@ -69,7 +71,7 @@ public class MainActivity extends BridgeActivity {
     private void configureWebView() {
         WebView webView = getBridge().getWebView();
         if (webView != null) {
-            // WebChromeClient - mikrofon izinleri için
+            // WebChromeClient - mikrofon izinleri ve console logları için
             webView.setWebChromeClient(new WebChromeClient() {
                 @Override
                 public void onPermissionRequest(PermissionRequest request) {
@@ -94,6 +96,45 @@ public class MainActivity extends BridgeActivity {
                     }
                     // Diğer izinler için varsayılan davranış
                     request.deny();
+                }
+                
+                /**
+                 * WebView console loglarını yakala ve Android Logcat'e yaz
+                 * Bu sayede tüm console.log, console.error, console.warn mesajları görülebilir
+                 */
+                @Override
+                public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                    // Console mesajını Android Logcat'e yaz
+                    String message = consoleMessage.message();
+                    String sourceId = consoleMessage.sourceId();
+                    int lineNumber = consoleMessage.lineNumber();
+                    ConsoleMessage.MessageLevel messageLevel = consoleMessage.messageLevel();
+                    
+                    // Log tag'i
+                    String tag = "LYRICST_WEBVIEW";
+                    
+                    // Mesaj formatı: [sourceId:lineNumber] message
+                    String formattedMessage = String.format("[%s:%d] %s", sourceId, lineNumber, message);
+                    
+                    // Log seviyesine göre Android Log seviyesi seç
+                    switch (messageLevel) {
+                        case ERROR:
+                            Log.e(tag, formattedMessage);
+                            break;
+                        case WARNING:
+                            Log.w(tag, formattedMessage);
+                            break;
+                        case TIP:
+                            Log.i(tag, formattedMessage);
+                            break;
+                        case LOG:
+                        default:
+                            Log.d(tag, formattedMessage);
+                            break;
+                    }
+                    
+                    // true döndür - mesaj işlendi
+                    return true;
                 }
             });
         }
