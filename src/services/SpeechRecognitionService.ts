@@ -57,10 +57,20 @@ export class SpeechRecognitionService {
       }
 
       // Konuşma tanıma örneği oluştur
-      const recognition = new SpeechRecognition();
+      console.log('🔧 [SPEECH] SpeechRecognition instance oluşturuluyor...');
+      let recognition: SpeechRecognition;
+      try {
+        recognition = new SpeechRecognition();
+        console.log('✅ [SPEECH] SpeechRecognition instance oluşturuldu:', recognition);
+        console.log('📱 [SPEECH] Recognition instance type:', typeof recognition);
+        console.log('📱 [SPEECH] Recognition instance constructor:', recognition.constructor);
+      } catch (createError: any) {
+        console.error('❌ [SPEECH] SpeechRecognition instance oluşturulamadı:', createError);
+        throw new Error(`Speech Recognition instance oluşturulamadı: ${createError.message}`);
+      }
+      
       this.recognition = recognition;
       this.callback = callback;
-      (this as any).onErrorCallback = onError; // Error callback'i sakla
       (this as any).onErrorCallback = onError; // Error callback'i sakla
 
       // AYARLAR - ANLIK İŞARETLEME VE SÜREKLI DİNLEME
@@ -161,23 +171,49 @@ export class SpeechRecognitionService {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        console.log('🎤 [SPEECH] ⚡⚡⚡ onresult event tetiklendi! ⚡⚡⚡ Results length:', event.results.length, '| ResultIndex:', event.resultIndex);
+        console.log('🎤 [SPEECH] ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡ onresult event tetiklendi! ⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
+        console.log('🎤 [SPEECH] Results length:', event.results.length);
+        console.log('🎤 [SPEECH] ResultIndex:', event.resultIndex);
+        console.log('🎤 [SPEECH] Recognition state:', (this.recognition as any)?.state || 'unknown');
+        console.log('🎤 [SPEECH] isListening:', this.isListening);
+        console.log('🎤 [SPEECH] Callback var mı:', !!this.callback);
+        console.log('🎤 [SPEECH] Event type:', event.type);
+        console.log('🎤 [SPEECH] Event timestamp:', Date.now());
+        
         // MOBİLDE TÜM RESULT EVENT'LERİNİ LOGLA (DEBUG İÇİN)
         const isMobileLocal = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         if (isMobileLocal) {
-          console.log(`📱 [MOBİL DEBUG] onresult event | Results length: ${event.results.length} | ResultIndex: ${event.resultIndex}`);
+          console.log(`📱 [MOBİL DEBUG] ⚡⚡⚡ onresult event ⚡⚡⚡ | Results length: ${event.results.length} | ResultIndex: ${event.resultIndex}`);
+          
+          // Eğer hiç result yoksa
+          if (event.results.length === 0) {
+            console.warn('⚠️ [MOBİL SPEECH] onresult event tetiklendi ama hiç result yok!');
+          }
+          
           // Her result'u detaylı logla
           for (let i = 0; i < event.results.length; i++) {
             const result = event.results[i];
+            console.log(`📱 [MOBİL SPEECH] Result[${i}] var mı:`, !!result);
+            console.log(`📱 [MOBİL SPEECH] Result[${i}] length:`, result?.length || 0);
+            console.log(`📱 [MOBİL SPEECH] Result[${i}] isFinal:`, result?.isFinal);
+            
             if (result && result.length > 0) {
               const transcript = result[0].transcript;
               const confidence = result[0].confidence || 0;
-              console.log(`📱 [MOBİL SPEECH] Result[${i}]: "${transcript}" | Confidence: ${confidence.toFixed(3)} | isFinal: ${result.isFinal}`);
+              console.log(`📱 [MOBİL SPEECH] ✅ Result[${i}]: "${transcript}" | Confidence: ${confidence.toFixed(3)} | isFinal: ${result.isFinal}`);
+            } else {
+              console.warn(`⚠️ [MOBİL SPEECH] Result[${i}] boş veya geçersiz!`);
             }
           }
+        } else {
+          console.log(`💻 [PC DEBUG] onresult event | Results length: ${event.results.length} | ResultIndex: ${event.resultIndex}`);
         }
+        
         this.handleResult(event);
       };
+      
+      // onresult event'inin ayarlandığını doğrula
+      console.log('✅ [SPEECH] onresult handler ayarlandı:', !!recognition.onresult);
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.log('⚠️ [SPEECH] onerror event:', event.error, '| State:', (recognition as any).state);
