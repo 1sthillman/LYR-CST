@@ -683,23 +683,50 @@ ${logs || '(Henüz log yok)'}
         }
       }
 
-      // 6. Konuşma tanımayı başlat - ANDROID WEBVIEW'DE WEB SPEECH API ÇALIŞMIYOR
-      // Android WebView'de onresult event'i hiç tetiklenmiyor
-      // Bu yüzden native Android Speech Recognition kullanılmalı (henüz implement edilmedi)
+      // 6. Konuşma tanımayı başlat - ANDROID WEBVIEW'DE NATIVE KULLAN
       console.log('🎤 [PLAYER] Speech Recognition başlatılıyor...');
-      console.warn('⚠️ [PLAYER] ANDROID WEBVIEW UYARISI: Web Speech API\'nin onresult event\'i tetiklenmiyor!');
-      console.warn('⚠️ [PLAYER] Native Android Speech Recognition implement edilmeli.');
       
-      await speechRecognitionService.initialize(
-        handleWordDetected,
-        (error: Error) => {
-          // Error callback - toast göster
-          toast.error(error.message, { duration: 3000 });
-          setError(error.message);
+      // Android WebView tespit et - Web Speech API çalışmıyor
+      const isAndroidWebView = /Android.*wv/i.test(navigator.userAgent);
+      const hasCapacitor = !!(window as any).Capacitor;
+      const isNativeAndroid = hasCapacitor && (window as any).Capacitor.getPlatform() === 'android';
+      
+      if (isAndroidWebView || isNativeAndroid) {
+        // ANDROID WEBVIEW: Native Android Speech Recognition kullan
+        console.log('📱 [PLAYER] Android WebView tespit edildi - Native Speech Recognition kullanılıyor...');
+        try {
+          await nativeSpeechRecognitionService.initialize(
+            handleWordDetected,
+            (error: Error) => {
+              toast.error(error.message, { duration: 3000 });
+              setError(error.message);
+            }
+          );
+          console.log('✅ [PLAYER] Native Android Speech Recognition başlatıldı!');
+        } catch (nativeError) {
+          console.error('❌ [PLAYER] Native Speech Recognition başlatılamadı:', nativeError);
+          // Fallback: Web Speech API'yi dene (çalışmayabilir)
+          console.warn('⚠️ [PLAYER] Fallback: Web Speech API deneniyor (çalışmayabilir)...');
+          await speechRecognitionService.initialize(
+            handleWordDetected,
+            (error: Error) => {
+              toast.error(error.message, { duration: 3000 });
+              setError(error.message);
+            }
+          );
         }
-      );
-      console.log('✅ [PLAYER] Speech Recognition başlatıldı - Mikrofon aktif!');
-      console.warn('⚠️ [PLAYER] NOT: Android WebView\'de onresult event\'i tetiklenmeyebilir!');
+      } else {
+        // WEB: Web Speech API kullan
+        console.log('🌐 [PLAYER] Web platformu tespit edildi - Web Speech API kullanılıyor...');
+        await speechRecognitionService.initialize(
+          handleWordDetected,
+          (error: Error) => {
+            toast.error(error.message, { duration: 3000 });
+            setError(error.message);
+          }
+        );
+        console.log('✅ [PLAYER] Web Speech API başlatıldı - Mikrofon aktif!');
+      }
       
       // Debug: Karaoke başladı
       addDebugLog(`[KARAOKE START] Şarkı: ${songTitle} | Sanatçı: ${artist} | Kelime Sayısı: ${words.length}`);
@@ -736,8 +763,21 @@ ${logs || '(Henüz log yok)'}
   const stopKaraoke = useCallback(async (): Promise<void> => {
     setIsListening(false);
     
-    // 1. Önce Speech Recognition durdur
+    // 1. Önce Speech Recognition durdur (hem Web hem Native)
     speechRecognitionService.stop();
+    
+    // Android WebView'de Native Speech Recognition da durdur
+    const isAndroidWebView = /Android.*wv/i.test(navigator.userAgent);
+    const hasCapacitor = !!(window as any).Capacitor;
+    const isNativeAndroid = hasCapacitor && (window as any).Capacitor.getPlatform() === 'android';
+    if (isAndroidWebView || isNativeAndroid) {
+      try {
+        nativeSpeechRecognitionService.stop();
+        console.log('✅ [PLAYER] Native Speech Recognition durduruldu');
+      } catch (error) {
+        console.error('❌ [PLAYER] Native Speech Recognition durdurulamadı:', error);
+      }
+    }
     
     // 2. Müziği durdur
     audioControlService.stop();

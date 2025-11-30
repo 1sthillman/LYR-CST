@@ -19,7 +19,7 @@ export class NativeSpeechRecognitionService {
       console.log('📱 [NATIVE SPEECH] Native Android Speech Recognition başlatılıyor...');
       
       this.callback = callback;
-      this.onErrorCallback = onError;
+      this.onErrorCallback = onError || null;
 
       // JavaScript bridge ile Android'e mesaj gönder
       const bridge = (window as any).AndroidSpeechBridge;
