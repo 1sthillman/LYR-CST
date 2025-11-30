@@ -71,9 +71,11 @@ export class SpeechRecognitionService {
 
       // Event handler'lar
       recognition.onstart = () => {
-        console.log('✅ [SPEECH] Recognition başladı! Dinliyor...');
+        console.log('✅ [SPEECH] Recognition başladı! Kesintisiz dinleme aktif...');
         this.lastProcessedIndex = -1;
         this.processedWords.clear(); // Web ile aynı - her başlangıçta temizle
+        // onstart olduğunda restart zamanını sıfırla - yeni başlangıç
+        (this as any).lastRestartTime = Date.now();
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -105,44 +107,46 @@ export class SpeechRecognitionService {
       };
 
       recognition.onend = () => {
-        // SÜREKLI DİNLEME - continuous: true ile çalışırken onend normal bir durum
-        // ÖNEMLİ: onend çok sık tetiklenebilir, çok agresif kontrol yap
+        // KESİNTİSİZ DİNLEME - ChatGPT/Grok gibi sistemlerde onend event'i ignore edilir
+        // continuous: true ile çalışırken onend normal bir durum, restart yapmaya GEREK YOK
+        // Sadece gerçek hatalarda (onerror) restart yapılır
+        
         if (this.isListening && this.recognition) {
-          // ÖNCE: Recognition state'ini kontrol et - eğer hala aktifse restart yapma
+          // ÖNCE: Recognition state'ini kontrol et - eğer hala aktifse TAMAMEN ignore et
           try {
             const state = (this.recognition as any).state;
-            if (state === 'listening' || state === 'starting') {
-              // Zaten dinliyor veya başlıyor, onend'i ignore et (normal durum)
+            if (state === 'listening' || state === 'starting' || state === 'processing') {
+              // Zaten dinliyor, işliyor veya başlıyor - onend'i TAMAMEN ignore et
+              // Bu ChatGPT/Grok gibi sistemlerin yaptığı gibi
               return;
             }
           } catch (e) {
             // State kontrolü başarısız, devam et
           }
           
-          // İKİNCİ: Son restart zamanını kontrol et - çok sık restart önleme
+          // İKİNCİ: Son restart zamanını kontrol et - çok agresif kontrol
           const lastRestartTime = (this as any).lastRestartTime || 0;
           const timeSinceLastRestart = Date.now() - lastRestartTime;
           
-          // Son restart'tan 5 saniye geçmediyse restart yapma (çok agresif kontrol)
-          if (timeSinceLastRestart < 5000) {
+          // Son restart'tan 10 saniye geçmediyse restart yapma (çok agresif - kesintisiz dinleme için)
+          if (timeSinceLastRestart < 10000) {
             // Sessizce atla - log yok (performans için)
             return;
           }
           
-          (this as any).lastRestartTime = Date.now();
-          
-          // ÜÇÜNCÜ: Uzun bekleme sonrası restart - mikrofon stabilitesi için
+          // ÜÇÜNCÜ: Sadece gerçekten durmuşsa ve uzun süre geçtiyse restart yap
+          // Ama önce bir kez daha state kontrolü yap
           setTimeout(() => {
             if (this.isListening && this.recognition) {
-              // Restart yapmadan önce tekrar state kontrolü
               try {
                 const state = (this.recognition as any).state;
-                if (state === 'listening' || state === 'starting') {
-                  // Zaten dinliyor, restart yapma
+                if (state === 'listening' || state === 'starting' || state === 'processing') {
+                  // Hala aktif, restart yapma
                   return;
                 }
                 
-                // Sadece gerçekten durmuşsa restart yap
+                // Gerçekten durmuşsa ve 10 saniye geçtiyse restart yap
+                (this as any).lastRestartTime = Date.now();
                 this.recognition.start();
               } catch (error: any) {
                 // "already started" hatası normal, görmezden gel
@@ -155,7 +159,7 @@ export class SpeechRecognitionService {
                 this.restartRecognition();
               }
             }
-          }, 2000); // 2 saniye bekleme - mikrofon stabilitesi için
+          }, 3000); // 3 saniye bekleme - kesintisiz dinleme için
         }
       };
 
@@ -185,26 +189,26 @@ export class SpeechRecognitionService {
       clearTimeout(this.restartTimeout);
     }
     
-    // Çok sık restart önleme - mikrofon stabilitesi için
+    // KESİNTİSİZ DİNLEME - Çok agresif restart önleme
     const lastRestartTime = (this as any).lastRestartTime || 0;
     const timeSinceLastRestart = Date.now() - lastRestartTime;
     
-    // Son restart'tan 5 saniye geçmediyse restart yapma (çok agresif kontrol)
-    if (timeSinceLastRestart < 5000) {
+    // Son restart'tan 10 saniye geçmediyse restart yapma (kesintisiz dinleme için)
+    if (timeSinceLastRestart < 10000) {
       // Sessizce atla - log yok (performans için)
       return;
     }
     
     (this as any).lastRestartTime = Date.now();
     
-    // Uzun delay - mikrofon stabilitesi için
+    // Uzun delay - kesintisiz dinleme için
     this.restartTimeout = window.setTimeout(() => {
       if (this.isListening && this.recognition) {
         try {
           // ÖNCE: Recognition state'ini kontrol et
           const state = (this.recognition as any).state;
-          if (state === 'listening' || state === 'starting') {
-            // Zaten dinliyor veya başlıyor, restart yapma
+          if (state === 'listening' || state === 'starting' || state === 'processing') {
+            // Zaten dinliyor, işliyor veya başlıyor, restart yapma
             return;
           }
           
@@ -220,11 +224,11 @@ export class SpeechRecognitionService {
           
           // Hata olursa daha uzun bekle ve tekrar dene
           if (this.isListening) {
-            setTimeout(() => this.restartRecognition(), 5000); // 5 saniye bekleme
+            setTimeout(() => this.restartRecognition(), 10000); // 10 saniye bekleme - kesintisiz dinleme
           }
         }
       }
-    }, 3000); // 3 saniye bekleme - mikrofon stabilitesi için
+    }, 5000); // 5 saniye bekleme - kesintisiz dinleme için
   }
 
   /**

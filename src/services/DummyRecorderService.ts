@@ -77,9 +77,9 @@ export class DummyRecorderService {
         }
       };
 
-      // 6. Her 100ms'de bir dummy data üret (Android'e sürekli sinyal - daha sık)
-      // Daha sık data üretmek Android'in mikrofonu kapatmasını daha iyi önler
-      this.mediaRecorder.start(100);
+      // 6. Her 50ms'de bir dummy data üret (Android'e sürekli sinyal - kesintisiz dinleme için)
+      // ChatGPT/Grok gibi sistemlerde mikrofon sürekli açık, daha sık sinyal gerekli
+      this.mediaRecorder.start(50);
 
       // 7. Keep-alive mekanizması: Her 5 saniyede bir kontrol et
       this.keepAliveInterval = setInterval(() => {

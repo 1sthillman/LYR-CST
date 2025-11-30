@@ -2,6 +2,7 @@ package com.lyricst.app;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
 import android.os.Build;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -21,8 +22,30 @@ public class MainActivity extends BridgeActivity {
         // Mikrofon iznini kontrol et ve iste
         checkAndRequestMicrophonePermission();
         
+        // AudioManager modunu ayarla - kesintisiz dinleme için (ChatGPT/Grok gibi)
+        configureAudioManager();
+        
         // WebView ayarlarını yapılandır
         configureWebView();
+    }
+    
+    /**
+     * AudioManager modunu ayarla - kesintisiz mikrofon erişimi için
+     * ChatGPT/Grok gibi sistemlerde kullanılan yöntem
+     */
+    private void configureAudioManager() {
+        try {
+            AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (audioManager != null) {
+                // MODE_IN_COMMUNICATION - kesintisiz iletişim modu
+                // Bu mod mikrofonun sürekli açık kalmasını sağlar
+                audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                // Speakerphone açık (opsiyonel - gerekirse kapatılabilir)
+                // audioManager.setSpeakerphoneOn(true);
+            }
+        } catch (Exception e) {
+            // Hata olursa devam et
+        }
     }
     
     /**
