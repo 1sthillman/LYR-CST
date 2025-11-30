@@ -374,8 +374,9 @@ export class SpeechRecognitionService {
           }
 
           // AKILLI THRESHOLD - Sessizlik durumunda kelime algılanmasın
-          // Minimum confidence yükseltildi - sadece gerçekten kelime algılandığında işle
-          const minConfidence = 0.25; // 0.01 -> 0.25 (sessizlikte algılama yok)
+          // Interim results için daha düşük threshold (anlık algılama için)
+          // Final results için daha yüksek threshold (kesin algılama için)
+          const minConfidence = result.isFinal ? 0.25 : 0.20; // Interim için 0.20, Final için 0.25 (anlık algılama)
 
           if (transcript.length > 0 && confidence >= minConfidence) {
             // Kelimeleri ayır ve temizle
@@ -394,10 +395,12 @@ export class SpeechRecognitionService {
                   return;
                 }
 
-                // Final sonuçlar için daha yüksek confidence ver
-                const finalConfidence = result.isFinal ? Math.max(confidence, 0.8) : Math.max(confidence, 0.75);
+                // Interim results için daha düşük confidence (anlık algılama için)
+                // Final results için daha yüksek confidence (kesin algılama için)
+                const finalConfidence = result.isFinal ? Math.max(confidence, 0.8) : Math.max(confidence, 0.7);
                 
                 // Callback'e gönder - ANLIK İŞARETLEME (INTERIM VE FINAL)
+                // Interim results anlık algılama için kritik - hemen gönder
                 this.callback!(cleanWord, finalConfidence);
                 
                 // İşlenen kelimeyi kaydet (sadece final results için)
