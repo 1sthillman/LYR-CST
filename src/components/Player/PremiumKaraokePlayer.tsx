@@ -7,6 +7,7 @@ import {
   Target, Zap, Bug
 } from 'lucide-react';
 import speechRecognitionService from '../../services/SpeechRecognitionService';
+import nativeSpeechRecognitionService from '../../services/NativeSpeechRecognitionService';
 import { dummyRecorderService } from '../../services/DummyRecorderService';
 import { audioContextService } from '../../services/AudioContextService';
 import { LyricsMatcher } from '../../engine/LyricsMatcher';

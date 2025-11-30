@@ -2,7 +2,6 @@
  * Native Android Speech Recognition Service
  * Android WebView'de Web Speech API çalışmadığı için native Android SpeechRecognizer kullanır
  */
-import { Capacitor } from '@capacitor/core';
 
 export class NativeSpeechRecognitionService {
   private isListening: boolean = false;
@@ -17,11 +16,6 @@ export class NativeSpeechRecognitionService {
     onError?: (error: Error) => void
   ): Promise<void> {
     try {
-      // Sadece native Android app için çalış
-      if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
-        throw new Error('Native Speech Recognition sadece Android app için kullanılabilir');
-      }
-
       console.log('📱 [NATIVE SPEECH] Native Android Speech Recognition başlatılıyor...');
       
       this.callback = callback;
@@ -30,14 +24,25 @@ export class NativeSpeechRecognitionService {
       // JavaScript bridge ile Android'e mesaj gönder
       const bridge = (window as any).AndroidSpeechBridge;
       if (!bridge) {
-        throw new Error('Android Speech Bridge bulunamadı! MainActivity.java\'da bridge kurulmalı.');
+        console.error('❌ [NATIVE SPEECH] Android Speech Bridge bulunamadı!');
+        console.error('❌ [NATIVE SPEECH] MainActivity.java\'da bridge kurulmalı.');
+        throw new Error('Android Speech Bridge bulunamadı! Lütfen native Android app kullanın.');
       }
+
+      console.log('✅ [NATIVE SPEECH] Android Speech Bridge bulundu');
 
       // Android'den gelen mesajları dinle
       (window as any).onNativeSpeechResult = (transcript: string, confidence: number) => {
         if (this.isListening && this.callback) {
-          console.log(`📱 [NATIVE SPEECH] Kelime algılandı: "${transcript}" | Confidence: ${confidence.toFixed(3)}`);
-          this.callback(transcript, confidence);
+          console.log(`📱 [NATIVE SPEECH] ⚡⚡⚡ Kelime algılandı: "${transcript}" | Confidence: ${confidence.toFixed(3)} ⚡⚡⚡`);
+          // Kelimeleri temizle ve ayır
+          const words = transcript.trim().toLowerCase().split(/\s+/).filter((w: string) => w.length > 0);
+          words.forEach((word: string) => {
+            const cleanWord = word.replace(/[.,!?;:'"()\[\]{}…–—]/g, '').trim();
+            if (cleanWord.length > 0) {
+              this.callback!(cleanWord, confidence);
+            }
+          });
         }
       };
 
@@ -49,10 +54,11 @@ export class NativeSpeechRecognitionService {
       };
 
       // Android'e başlatma mesajı gönder
+      console.log('📱 [NATIVE SPEECH] Android\'e startListening() mesajı gönderiliyor...');
       bridge.startListening();
       
       this.isListening = true;
-      console.log('✅ [NATIVE SPEECH] Native Android Speech Recognition başlatıldı');
+      console.log('✅ [NATIVE SPEECH] Native Android Speech Recognition başlatıldı - Dinleme aktif!');
     } catch (error) {
       console.error('❌ [NATIVE SPEECH] Başlatılamadı:', error);
       if (onError) {
