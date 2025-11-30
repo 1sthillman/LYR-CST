@@ -4,12 +4,12 @@
  * Hata yaparsa düşürür, doğru yaparsa yükseltir
  */
 export class AdaptiveThreshold {
-  private baseThreshold: number = 0.55; // Daha düşük başlangıç (daha hızlı algılama)
-  private currentThreshold: number = 0.55;
+  private baseThreshold: number = 0.45; // Daha düşük başlangıç (daha hızlı algılama ve daha yüksek doğruluk)
+  private currentThreshold: number = 0.45;
   private history: { confidence: number; isCorrect: boolean; timestamp: number }[] = [];
   private readonly WINDOW_SIZE = 10; // Son 10 eşleşmeyi takip et
-  private readonly MIN_THRESHOLD = 0.40; // Minimum threshold (çok esnek - hızlı algılama)
-  private readonly MAX_THRESHOLD = 0.70; // Maksimum threshold (daha esnek)
+  private readonly MIN_THRESHOLD = 0.35; // Minimum threshold (çok esnek - yüksek doğruluk için)
+  private readonly MAX_THRESHOLD = 0.65; // Maksimum threshold (daha esnek)
 
   /**
    * Threshold'u ayarla - son eşleşmeye göre

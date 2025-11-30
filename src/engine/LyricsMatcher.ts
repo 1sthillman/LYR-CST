@@ -215,8 +215,9 @@ export class LyricsMatcher {
       }
     }
 
-    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - DAHA ESNEK (HIZLI ALGILAMA)
-    if (bestMatch && bestMatch.similarity >= dynamicThreshold && confidence >= 0.2) { // 0.3 -> 0.2 (daha esnek)
+    // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - DAHA ESNEK (YÜKSEK DOĞRULUK İÇİN)
+    // Similarity threshold daha düşük, confidence threshold daha düşük
+    if (bestMatch && bestMatch.similarity >= dynamicThreshold && confidence >= 0.15) { // 0.2 -> 0.15 (daha esnek)
       const matchIndex = bestMatch.index;
       
       // POZİSYON ATLAMASINI SINIRLA
@@ -267,11 +268,15 @@ export class LyricsMatcher {
         }
       }
 
+      // Benzerlik yeterince yüksekse (0.6+) doğru say (yüksek doğruluk için)
+      // Ayrıca partial match varsa da doğru say
+      const finalIsCorrect = isCorrect || bestMatch.similarity >= 0.6;
+      
       const match: MatchedWord = {
         original: this.lyrics[matchIndex],
         detected: detectedWordClean,
         confidence,
-        isCorrect,
+        isCorrect: finalIsCorrect, // Yüksek benzerlikli eşleşmeleri de doğru say
         timestamp: now
       };
 
@@ -355,12 +360,40 @@ export class LyricsMatcher {
   }
 
   /**
-   * Doğruluk oranını döndürür (0-1 arası)
+   * Doğruluk oranını döndürür (0-1 arası) - İYİLEŞTİRİLMİŞ
+   * Sadece isCorrect değil, yüksek benzerlikli eşleşmeleri de sayar
    */
   getAccuracy(): number {
     if (this.lyrics.length === 0) return 0;
-    const correct = this.matchedWords.filter((m: MatchedWord | null) => m && m.isCorrect).length;
-    return correct / this.lyrics.length;
+    
+    let correctCount = 0;
+    let totalProcessed = 0;
+    
+    for (let i = 0; i < this.lyrics.length; i++) {
+      const match = this.matchedWords[i];
+      
+      if (match) {
+        totalProcessed++;
+        
+        // Doğru olarak işaretlenmişse
+        if (match.isCorrect) {
+          correctCount++;
+        } 
+        // Eğer yüksek benzerlik varsa (0.6+) ve confidence yeterliyse (0.3+) doğru say
+        else if (match.detected && match.detected !== '[TIMEOUT]' && match.detected !== '') {
+          const similarity = calculateSimilarity(this.lyrics[i], match.detected);
+          if (similarity >= 0.6 && match.confidence >= 0.3) {
+            correctCount++;
+          }
+        }
+      }
+    }
+    
+    // Eğer hiç işlenmemişse 0 döndür
+    if (totalProcessed === 0) return 0;
+    
+    // İşlenen kelimelere göre doğruluk hesapla (daha adil)
+    return correctCount / totalProcessed;
   }
 
   /**

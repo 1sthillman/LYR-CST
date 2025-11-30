@@ -62,7 +62,7 @@ export const calculateSimilarity = (str1: string, str2: string): number => {
   // Tam eşleşme kontrolü
   if (str1Lower === str2Lower) return 1;
   
-  // PARTIAL MATCH (KISMI EŞLEŞME) - RAP İÇİN KRİTİK - ÇOK ESNEK
+  // PARTIAL MATCH (KISMI EŞLEŞME) - RAP İÇİN KRİTİK - ÇOK ESNEK (YÜKSEK DOĞRULUK İÇİN)
   // Eğer algılanan kelime, hedef kelimenin başlangıcı ise (hızlı konuşma için)
   // Örnek: "gece" -> "gecelik", "rit" -> "ritimlerle" ✅
   if (str2Lower.startsWith(str1Lower) && str1Lower.length >= 2) {
@@ -70,15 +70,19 @@ export const calculateSimilarity = (str1: string, str2: string): number => {
     const matchRatio = str1Lower.length / str2Lower.length;
     // Eğer algılanan kelime hedef kelimenin en az %50'si ise yüksek benzerlik
     if (matchRatio >= 0.5) {
-      return 0.80; // Yüksek benzerlik (partial match)
+      return 0.85; // Yüksek benzerlik (partial match) - 0.80 -> 0.85 (daha yüksek doğruluk)
     }
     // Eğer en az %30'u ise orta benzerlik
     if (matchRatio >= 0.3) {
-      return 0.70; // Orta benzerlik (partial match)
+      return 0.75; // Orta benzerlik (partial match) - 0.70 -> 0.75 (daha yüksek doğruluk)
     }
     // Eğer en az %20'si ise düşük ama kabul edilebilir
     if (matchRatio >= 0.2) {
-      return 0.65; // Düşük ama kabul edilebilir (rap için)
+      return 0.70; // Düşük ama kabul edilebilir (rap için) - 0.65 -> 0.70 (daha yüksek doğruluk)
+    }
+    // Eğer en az %15'i ise çok düşük ama yine de kabul edilebilir (yüksek doğruluk için)
+    if (matchRatio >= 0.15) {
+      return 0.65; // Çok düşük ama kabul edilebilir
     }
   }
   
@@ -99,13 +103,17 @@ export const calculateSimilarity = (str1: string, str2: string): number => {
   if (str2Lower.includes(str1Lower) && str1Lower.length >= 2) {
     const matchRatio = str1Lower.length / str2Lower.length;
     if (matchRatio >= 0.5) {
-      return 0.75; // İçerik eşleşmesi (yüksek)
+      return 0.80; // İçerik eşleşmesi (yüksek) - 0.75 -> 0.80 (daha yüksek doğruluk)
     }
     if (matchRatio >= 0.3) {
-      return 0.68; // İçerik eşleşmesi (orta)
+      return 0.72; // İçerik eşleşmesi (orta) - 0.68 -> 0.72 (daha yüksek doğruluk)
     }
     if (matchRatio >= 0.2) {
-      return 0.65; // İçerik eşleşmesi (düşük ama kabul edilebilir)
+      return 0.68; // İçerik eşleşmesi (düşük ama kabul edilebilir) - 0.65 -> 0.68 (daha yüksek doğruluk)
+    }
+    // Eğer en az %15'i ise çok düşük ama yine de kabul edilebilir
+    if (matchRatio >= 0.15) {
+      return 0.65; // Çok düşük ama kabul edilebilir
     }
   }
   
@@ -119,6 +127,16 @@ export const calculateSimilarity = (str1: string, str2: string): number => {
   // Kısa kelimeler için daha esnek eşleştirme
   if (maxLength <= 4 && distance <= 1) {
     return Math.max(similarity, 0.75); // Minimum %75 benzerlik
+  }
+  
+  // Orta uzunlukta kelimeler için daha esnek eşleştirme (yüksek doğruluk için)
+  if (maxLength <= 8 && distance <= 2) {
+    return Math.max(similarity, 0.70); // Minimum %70 benzerlik
+  }
+  
+  // Uzun kelimeler için de daha esnek eşleştirme
+  if (maxLength > 8 && distance <= 3) {
+    return Math.max(similarity, 0.65); // Minimum %65 benzerlik
   }
   
   return similarity;
