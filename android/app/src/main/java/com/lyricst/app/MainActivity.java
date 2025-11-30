@@ -192,8 +192,25 @@ public class MainActivity extends BridgeActivity {
 
                 @Override
                 public void onError(int error) {
-                    Log.e("LYRICST", "Speech Recognition hatası: " + error);
-                    String errorMessage = "Speech Recognition hatası: " + error;
+                    String errorName = getErrorName(error);
+                    Log.w("LYRICST", "Speech Recognition hatası: " + error + " (" + errorName + ")");
+                    
+                    // ERROR_NO_MATCH (7) ve ERROR_SPEECH_TIMEOUT (6) normal durumlar - sessizce restart
+                    // Bu hatalar sürekli dinleme modunda normaldir
+                    if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        // Sessizce restart - log yok (normal durum)
+                        if (isListening) {
+                            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                                if (isListening) {
+                                    startNativeSpeechRecognition();
+                                }
+                            }, 500); // Kısa delay - sürekli dinleme için
+                        }
+                        return; // JavaScript'e hata gönderme - normal durum
+                    }
+                    
+                    // Diğer hatalar için JavaScript'e bildir
+                    String errorMessage = "Speech Recognition hatası: " + error + " (" + errorName + ")";
                     WebView webView = getBridge().getWebView();
                     if (webView != null) {
                         webView.post(() -> {
@@ -203,11 +220,42 @@ public class MainActivity extends BridgeActivity {
                             );
                         });
                     }
-                    // Hata olursa yeniden başlat (sürekli dinleme için)
-                    if (isListening) {
+                    
+                    // Kritik hatalar için restart (ERROR_RECOGNIZER_BUSY hariç)
+                    if (isListening && error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                            startNativeSpeechRecognition();
-                        }, 1000);
+                            if (isListening) {
+                                startNativeSpeechRecognition();
+                            }
+                        }, 2000); // Uzun delay - kritik hatalar için
+                    }
+                }
+                
+                /**
+                 * Error code'unu isme çevir
+                 */
+                private String getErrorName(int error) {
+                    switch (error) {
+                        case SpeechRecognizer.ERROR_AUDIO:
+                            return "ERROR_AUDIO";
+                        case SpeechRecognizer.ERROR_CLIENT:
+                            return "ERROR_CLIENT";
+                        case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                            return "ERROR_INSUFFICIENT_PERMISSIONS";
+                        case SpeechRecognizer.ERROR_NETWORK:
+                            return "ERROR_NETWORK";
+                        case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+                            return "ERROR_NETWORK_TIMEOUT";
+                        case SpeechRecognizer.ERROR_NO_MATCH:
+                            return "ERROR_NO_MATCH";
+                        case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+                            return "ERROR_RECOGNIZER_BUSY";
+                        case SpeechRecognizer.ERROR_SERVER:
+                            return "ERROR_SERVER";
+                        case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                            return "ERROR_SPEECH_TIMEOUT";
+                        default:
+                            return "UNKNOWN_ERROR";
                     }
                 }
 
@@ -241,8 +289,10 @@ public class MainActivity extends BridgeActivity {
                     // Sürekli dinleme için yeniden başlat
                     if (isListening) {
                         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                            startNativeSpeechRecognition();
-                        }, 100);
+                            if (isListening) {
+                                startNativeSpeechRecognition();
+                            }
+                        }, 200); // Biraz daha uzun delay - stabilite için
                     }
                 }
 
