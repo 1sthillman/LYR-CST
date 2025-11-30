@@ -16,20 +16,28 @@ export class NativeSpeechRecognitionService {
     onError?: (error: Error) => void
   ): Promise<void> {
     try {
-      console.log('📱 [NATIVE SPEECH] Native Android Speech Recognition başlatılıyor...');
+      console.log('📱 [NATIVE SPEECH] ⚡⚡⚡ Native Android Speech Recognition başlatılıyor... ⚡⚡⚡');
+      console.log('📱 [NATIVE SPEECH] Callback var mı:', !!callback);
+      console.log('📱 [NATIVE SPEECH] onError var mı:', !!onError);
       
       this.callback = callback;
       this.onErrorCallback = onError || null;
 
       // JavaScript bridge ile Android'e mesaj gönder
+      console.log('📱 [NATIVE SPEECH] AndroidSpeechBridge aranıyor...');
       const bridge = (window as any).AndroidSpeechBridge;
+      console.log('📱 [NATIVE SPEECH] Bridge var mı:', !!bridge);
+      console.log('📱 [NATIVE SPEECH] Bridge type:', typeof bridge);
+      
       if (!bridge) {
         console.error('❌ [NATIVE SPEECH] Android Speech Bridge bulunamadı!');
         console.error('❌ [NATIVE SPEECH] MainActivity.java\'da bridge kurulmalı.');
+        console.error('❌ [NATIVE SPEECH] window.AndroidSpeechBridge:', (window as any).AndroidSpeechBridge);
         throw new Error('Android Speech Bridge bulunamadı! Lütfen native Android app kullanın.');
       }
 
       console.log('✅ [NATIVE SPEECH] Android Speech Bridge bulundu');
+      console.log('📱 [NATIVE SPEECH] Bridge methods:', Object.keys(bridge));
 
       // Android'den gelen mesajları dinle
       (window as any).onNativeSpeechResult = (transcript: string, confidence: number) => {

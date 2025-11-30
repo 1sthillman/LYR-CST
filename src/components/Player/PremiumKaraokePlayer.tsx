@@ -691,20 +691,30 @@ ${logs || '(Henüz log yok)'}
       const hasCapacitor = !!(window as any).Capacitor;
       const isNativeAndroid = hasCapacitor && (window as any).Capacitor.getPlatform() === 'android';
       
+      console.log('🔍 [PLAYER] Platform tespiti:');
+      console.log('🔍 [PLAYER] User Agent:', navigator.userAgent);
+      console.log('🔍 [PLAYER] isAndroidWebView:', isAndroidWebView);
+      console.log('🔍 [PLAYER] hasCapacitor:', hasCapacitor);
+      console.log('🔍 [PLAYER] isNativeAndroid:', isNativeAndroid);
+      console.log('🔍 [PLAYER] AndroidSpeechBridge var mı:', !!(window as any).AndroidSpeechBridge);
+      
       if (isAndroidWebView || isNativeAndroid) {
         // ANDROID WEBVIEW: Native Android Speech Recognition kullan
-        console.log('📱 [PLAYER] Android WebView tespit edildi - Native Speech Recognition kullanılıyor...');
+        console.log('📱 [PLAYER] ⚡⚡⚡ Android WebView tespit edildi - Native Speech Recognition kullanılıyor... ⚡⚡⚡');
         try {
+          console.log('📱 [PLAYER] nativeSpeechRecognitionService.initialize() çağrılıyor...');
           await nativeSpeechRecognitionService.initialize(
             handleWordDetected,
             (error: Error) => {
+              console.error('❌ [PLAYER] Native Speech Recognition error callback:', error);
               toast.error(error.message, { duration: 3000 });
               setError(error.message);
             }
           );
-          console.log('✅ [PLAYER] Native Android Speech Recognition başlatıldı!');
+          console.log('✅ [PLAYER] ⚡⚡⚡ Native Android Speech Recognition başlatıldı! ⚡⚡⚡');
         } catch (nativeError) {
           console.error('❌ [PLAYER] Native Speech Recognition başlatılamadı:', nativeError);
+          console.error('❌ [PLAYER] Error details:', nativeError instanceof Error ? nativeError.message : String(nativeError));
           // Fallback: Web Speech API'yi dene (çalışmayabilir)
           console.warn('⚠️ [PLAYER] Fallback: Web Speech API deneniyor (çalışmayabilir)...');
           await speechRecognitionService.initialize(
