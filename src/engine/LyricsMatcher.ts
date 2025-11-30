@@ -226,23 +226,32 @@ export class LyricsMatcher {
     }
 
     // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - AKILLI EŞLEŞME
-    // Interim results için daha düşük confidence (anlık algılama için)
-    // Final results için daha yüksek confidence (kesin algılama için)
-    // Confidence threshold optimize edildi - anlık algılama için interim results'ı kabul et
-    const minConfidenceForMatch = confidence >= 0.7 ? 0.20 : 0.25; // Yüksek confidence interim results için 0.20, diğerleri için 0.25
+    // Confidence threshold yükseltildi - arka plan gürültüsü ve yanlış algılamaları önleme
+    // Similarity threshold yükseltildi - yanlış eşleşmeleri önleme
+    const minConfidenceForMatch = 0.50; // Minimum confidence 0.50 (arka plan gürültüsü önleme)
+    const minSimilarityForMatch = 0.75; // Minimum similarity 0.75 (yanlış eşleşmeleri önleme)
     
     // DETAYLI LOG - Eşleştirme sürecini logla
     if (bestMatch) {
-      console.log(`🔍 [MATCHER] Eşleştirme kontrolü: "${detectedWordClean}" | Mevcut pozisyon: ${this._currentPosition}/${this.lyrics.length} | Hedef kelime: "${this.lyrics[this._currentPosition]}" | Similarity: ${bestMatch.similarity.toFixed(2)} | Threshold: ${dynamicThreshold.toFixed(2)} | Confidence: ${confidence.toFixed(2)} | MinConfidence: ${minConfidenceForMatch.toFixed(2)}`);
+      console.log(`🔍 [MATCHER] Eşleştirme kontrolü: "${detectedWordClean}" | Mevcut pozisyon: ${this._currentPosition}/${this.lyrics.length} | Hedef kelime: "${this.lyrics[this._currentPosition]}" | Similarity: ${bestMatch.similarity.toFixed(2)} | Threshold: ${dynamicThreshold.toFixed(2)} | MinSimilarity: ${minSimilarityForMatch.toFixed(2)} | Confidence: ${confidence.toFixed(2)} | MinConfidence: ${minConfidenceForMatch.toFixed(2)}`);
     }
     
-    if (bestMatch && bestMatch.similarity >= dynamicThreshold && confidence >= minConfidenceForMatch) {
+    // KRİTİK: Hem similarity hem confidence yeterli olmalı
+    if (bestMatch && 
+        bestMatch.similarity >= Math.max(dynamicThreshold, minSimilarityForMatch) && 
+        confidence >= minConfidenceForMatch) {
       const matchIndex = bestMatch.index;
       
-      // POZİSYON ATLAMASINI SINIRLA
+      // POZİSYON ATLAMASINI SINIRLA - DAHA SIKI KONTROL
       const positionJump = matchIndex - this._currentPosition;
+      
+      // KRİTİK: Pozisyon atlaması için daha yüksek similarity gerekli
+      // Eğer pozisyon atlanıyorsa (jump > 0), similarity daha yüksek olmalı
+      const minSimilarityForJump = positionJump > 0 ? 0.85 : minSimilarityForMatch; // Atlama için 0.85 similarity
+      
       if (positionJump > this.MAX_POSITION_JUMP) {
-        // Çok büyük atlama - eşleşmeyi reddet, sadece mevcut pozisyondaki kelimeyi işaretle
+        // Çok büyük atlama - eşleşmeyi reddet
+        console.log(`⚠️ [MATCHER] Çok büyük atlama reddedildi: ${positionJump} kelime | Pozisyon: ${this._currentPosition} -> ${matchIndex} | Similarity: ${bestMatch.similarity.toFixed(2)}`);
         const targetWord = this.lyrics[this._currentPosition];
         const match: MatchedWord = {
           original: targetWord,
@@ -258,7 +267,6 @@ export class LyricsMatcher {
         this.lastMatchTime = now;
         this.lastDetectedWord = ''; // Temizle
         this.clearStuckTimeout();
-        // Timeout başlatma - sadece gerçekten kelime algılandığında başlatılacak
         
         // Adaptive threshold'u güncelle
         this.adaptiveThreshold.adjustThreshold(confidence, false);
@@ -267,6 +275,24 @@ export class LyricsMatcher {
           this.onPositionChange(this._currentPosition);
         }
         
+        return match;
+      }
+      
+      // Pozisyon atlaması için yüksek similarity kontrolü
+      if (positionJump > 0 && bestMatch.similarity < minSimilarityForJump) {
+        // Pozisyon atlanıyor ama similarity yeterli değil - reddet
+        console.log(`⚠️ [MATCHER] Pozisyon atlaması reddedildi: Similarity yetersiz | Pozisyon: ${this._currentPosition} -> ${matchIndex} | Similarity: ${bestMatch.similarity.toFixed(2)} | MinSimilarity: ${minSimilarityForJump.toFixed(2)}`);
+        // Eşleşmeyi reddet, mevcut pozisyonda kal
+        const targetWord = this.lyrics[this._currentPosition];
+        const match: MatchedWord = {
+          original: targetWord,
+          detected: detectedWordClean,
+          confidence,
+          isCorrect: false,
+          timestamp: now
+        };
+        this.matchedWords[this._currentPosition] = match;
+        this.adaptiveThreshold.adjustThreshold(confidence, false);
         return match;
       }
       
@@ -367,7 +393,8 @@ export class LyricsMatcher {
     
     // KRİTİK: Sadece gerçekten kelime algılandıysa ve confidence yeterliyse timeout başlat
     // Sessizlik durumunda (çok düşük confidence) timeout başlatma
-    const MIN_CONFIDENCE_FOR_TIMEOUT = 0.3; // Minimum confidence threshold
+    // Confidence threshold yükseltildi - arka plan gürültüsü için timeout başlatma
+    const MIN_CONFIDENCE_FOR_TIMEOUT = 0.50; // Minimum confidence threshold (0.3 -> 0.50)
     
     // Eğer çok düşük benzerlik varsa (0.15'ten az) VE confidence yeterliyse (0.3+) VE 10 saniye geçtiyse pozisyonu ilerlet
     // DAHA AKILLI - sadece gerçekten takılı kalırsa ve gerçekten kelime algılandıysa ilerlet

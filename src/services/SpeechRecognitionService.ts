@@ -398,10 +398,11 @@ export class SpeechRecognitionService {
             confidence = result.isFinal ? 0.9 : 0.8;
           }
 
-          // AKILLI THRESHOLD - Sessizlik durumunda kelime algılanmasın
-          // Interim results için daha düşük threshold (anlık algılama için)
+          // AKILLI THRESHOLD - Sessizlik ve arka plan gürültüsü algılanmasın
+          // Confidence threshold yükseltildi - arka plan gürültüsü geçmesin
+          // Interim results için daha yüksek threshold (arka plan gürültüsü önleme)
           // Final results için daha yüksek threshold (kesin algılama için)
-          const minConfidence = result.isFinal ? 0.25 : 0.20; // Interim için 0.20, Final için 0.25 (anlık algılama)
+          const minConfidence = result.isFinal ? 0.40 : 0.35; // Interim için 0.35, Final için 0.40 (arka plan gürültüsü önleme)
 
           if (transcript.length > 0 && confidence >= minConfidence) {
             // Kelimeleri ayır ve temizle
