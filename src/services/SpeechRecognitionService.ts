@@ -125,11 +125,35 @@ export class SpeechRecognitionService {
 
       // Event handler'lar
       recognition.onstart = () => {
-        console.log('✅ [SPEECH] Recognition başladı! Kesintisiz dinleme aktif...');
-        console.log('📱 [SPEECH] Recognition state:', (recognition as any).state);
+        const state = (recognition as any).state || 'unknown';
+        console.log('✅ [SPEECH] ⚡⚡⚡ onstart event tetiklendi! ⚡⚡⚡');
+        console.log('📱 [SPEECH] Recognition state:', state);
         console.log('📱 [SPEECH] Recognition lang:', recognition.lang);
         console.log('📱 [SPEECH] Recognition continuous:', recognition.continuous);
         console.log('📱 [SPEECH] Recognition interimResults:', recognition.interimResults);
+        console.log('📱 [SPEECH] Recognition maxAlternatives:', recognition.maxAlternatives);
+        console.log('📱 [SPEECH] Recognition serviceURI:', (recognition as any).serviceURI || 'default');
+        console.log('📱 [SPEECH] Recognition grammars:', (recognition as any).grammars || 'none');
+        console.log('📱 [SPEECH] Mikrofon stream durumu:', (window as any).__microphoneStream ? 'AKTİF' : 'YOK');
+        
+        // Mikrofon stream kontrolü
+        const stream = (window as any).__microphoneStream as MediaStream | undefined;
+        if (stream) {
+          const audioTracks = stream.getAudioTracks();
+          console.log('📱 [SPEECH] Audio tracks sayısı:', audioTracks.length);
+          audioTracks.forEach((track, index) => {
+            console.log(`📱 [SPEECH] Audio track[${index}]:`, {
+              enabled: track.enabled,
+              readyState: track.readyState,
+              label: track.label,
+              muted: track.muted,
+              kind: track.kind
+            });
+          });
+        } else {
+          console.error('❌ [SPEECH] Mikrofon stream bulunamadı!');
+        }
+        
         this.lastProcessedIndex = -1;
         this.processedWords.clear(); // Web ile aynı - her başlangıçta temizle
         // onstart olduğunda restart zamanını sıfırla - yeni başlangıç
@@ -282,14 +306,30 @@ export class SpeechRecognitionService {
       // Bazı mobil tarayıcılarda getUserMedia veya Speech Recognition
       // sadece kullanıcı etkileşimi (buton tıklama) sonrası çalışır
       try {
+        console.log('🚀 [SPEECH] recognition.start() çağrılıyor...');
+        console.log('🚀 [SPEECH] Recognition state (start öncesi):', (recognition as any).state || 'unknown');
+        console.log('🚀 [SPEECH] Mikrofon stream var mı:', !!(window as any).__microphoneStream);
+        
         recognition.start();
+        
+        // Start sonrası state kontrolü
+        setTimeout(() => {
+          console.log('🚀 [SPEECH] Recognition state (start sonrası):', (recognition as any).state || 'unknown');
+        }, 100);
+        
         this.isListening = true;
         this.processedWords.clear();
         this.lastProcessedIndex = -1;
         (this as any).lastRestartTime = Date.now();
         
-        console.log('✅ Recognition başlatıldı, isListening:', this.isListening);
-        console.log('📱 Kesintisiz dinleme aktif - telefon görüşmesi gibi çalışıyor');
+        console.log('✅ [SPEECH] Recognition başlatıldı, isListening:', this.isListening);
+        console.log('📱 [SPEECH] Kesintisiz dinleme aktif - telefon görüşmesi gibi çalışıyor');
+        console.log('📱 [SPEECH] Recognition ayarları:', {
+          lang: recognition.lang,
+          continuous: recognition.continuous,
+          interimResults: recognition.interimResults,
+          maxAlternatives: recognition.maxAlternatives
+        });
 
         // Permissions kontrolü başlat (her 10 saniyede bir)
         this.startPermissionMonitoring();

@@ -554,19 +554,36 @@ ${logs || '(Henüz log yok)'}
           audio: audioConstraints 
         });
         console.log('✅ [PLAYER] Mikrofon izni verildi! Stream aktif:', stream.active);
+        console.log('📱 [PLAYER] Stream ID:', stream.id);
+        console.log('📱 [PLAYER] Stream active:', stream.active);
+        
+        // Audio tracks detaylı bilgi
+        const audioTracks = stream.getAudioTracks();
+        console.log('📱 [PLAYER] Audio tracks sayısı:', audioTracks.length);
+        audioTracks.forEach((track, index) => {
+          console.log(`📱 [PLAYER] Audio track[${index}]:`, {
+            id: track.id,
+            kind: track.kind,
+            label: track.label,
+            enabled: track.enabled,
+            readyState: track.readyState,
+            muted: track.muted,
+            settings: track.getSettings()
+          });
+        });
         
         // Stream'in aktif olduğunu kontrol et
-        const audioTracks = stream.getAudioTracks();
-        if (audioTracks.length === 0) {
+        const streamAudioTracks = stream.getAudioTracks();
+        if (streamAudioTracks.length === 0) {
           throw new Error('Mikrofon stream\'inde audio track bulunamadı');
         }
         
         // Track'in enabled olduğunu kontrol et
-        const audioTrack = audioTracks[0];
+        const audioTrack = streamAudioTracks[0];
         if (!audioTrack.enabled) {
           audioTrack.enabled = true;
         }
-        
+
         console.log('✅ [PLAYER] Audio track durumu:', {
           enabled: audioTrack.enabled,
           readyState: audioTrack.readyState,
