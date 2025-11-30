@@ -1,0 +1,414 @@
+# 🎯 **KARAOKE NOT PRO - CURSOR AI KURALLARI (.cursorrules)**
+
+Aşağıdaki kuralları projenin ana dizinine `.cursorrules` dosyası olarak kaydet. Bu kurallar sayesinde yapay zeka **asla hata yapmayacak, saçmalamayacak** ve **sadece istediğiniz şekilde** kod üretecek.
+
+---
+
+## 📏 **1. PROJE GENEL KURALLARI (KESİN İLKELER)**
+
+```markdown
+# PROJE MUTLAKA REACT + TYPESCRIPT + TAILWIND CSS ile olacak
+# SADECE functional components ve React Hooks kullanılacak (Class component ASLA)
+# Her component .tsx uzantılı olacak ve TypeScript strict mode kurallarına uyacak
+# Türkçe yorumlar ve açıklamalar kullanılacak, kod içinde İNGİLİZCE ASLA
+# Kod tekrarı %0 olacak - herhangi bir kod bloğu 2 kez tekrarlanmayacak
+# Component'ler maximum 150 satır olacak, daha uzunsa mutlaka parçalanacak
+# Her fonksiyon tek bir iş yapacak (Single Responsibility Principle)
+# Default export ASLA kullanılmayacak, named export zorunlu
+# Props interface'leri her zaman ayrı tanımlanacak (inline type ASLA)
+```
+
+---
+
+## 🛠 **2. TEKNOLOJİ STACKİ ve KULLANIM KURALLARI**
+
+```markdown
+# React 18+ ve React Hooks (useState, useEffect, useRef, useCallback, useMemo) zorunlu
+# TypeScript strict mode aktif - her değişkenin tipi explicit belirtilecek (infer ASLA)
+# Tailwind CSS ile styling - inline style ASLA, <style> tag'i ASLA
+# Framer Motion ile animasyonlar - CSS transition/animation ASLA
+# TensorFlow.js @tensorflow/tfjs ve @tensorflow-models/speech-commands
+# SQLite better-sqlite3 ile local veritabanı
+# Eklenecek bağımlılıklar: lucide-react, framer-motion, tailwindcss, better-sqlite3, @tensorflow/tfjs, @tensorflow-models/speech-commands
+# ASLA başka kütüphane önerme - yukarıdaki stack dışındakileri kullanma
+```
+
+---
+
+## 📐 **3. REACT TYPESCRIPT KOD STANDARTLARI**
+
+```typescript
+// DOĞRU ✅
+interface Props {
+  lyrics: string;
+  songId: number;
+  onComplete?: (accuracy: number) => void;
+}
+
+export const Component: React.FC<Props> = ({ lyrics, songId, onComplete }) => {
+  const [isListening, setIsListening] = useState<boolean>(false);
+  
+  const handleStart = useCallback(async () => {
+    // Sadece bir iş
+  }, []);
+  
+  return <div>...</div>;
+}
+
+// YANLIŞ ❌ (ASLA BUNU YAPMA)
+export default function Component(props) {
+  const [state, setState] = useState(false); // tip belirtilmemiş
+  
+  function handle() { // useCallback yok
+    // bir sürü iş
+  }
+  
+  return <div style={{ color: 'red' }}>...</div>; // inline style
+}
+```
+
+**KURAL:**
+```
+- Her component FC generic tipi ile başlayacak
+- useCallback ve useMemo ile performans optimizasyonu zorunlu
+- async/await kullanılacak, then/catch ASLA
+- Error boundary her component'te olacak
+- Her hook'un dependency array'i eksiksiz olacak
+- Custom hook'lar use prefix ile başlayacak (useSpeechRecognition)
+```
+
+---
+
+## 🎨 **4. TASARIM ve UI/UX MUTLAK KURALLARI**
+
+```markdown
+# Glassmorphism efekti MUTLAKA kullanılacak: bg-white/5 backdrop-blur-xl border border-white/10
+# Border radius minimum 12px (rounded-xl), kartlar için 24px (rounded-2xl)
+# Tüm butonlarda motion.button kullanılacak ve whileHover/whileTap olacak
+# Renk paleti: Sadece purple-500 (#a855f7), pink-500 (#ec4899), gray-900, gray-800, white/5
+# Gradientler sadece bg-gradient-to-r from-purple-500 to-pink-500 olacak
+# Shadow efektleri her zaman: shadow-purple-500/40 ve hover'da shadow-purple-500/60
+# Animasyonlar sadece spring tipi olacak: transition={{ type: 'spring', stiffness: 100 }}
+# Opacity fade-in/out kullanılacak, opacity değerleri 0.1 aralıklarla olacak
+# Z-index'ler 10, 20, 30, 40, 50 olarak katmanlı olacak
+# Custom scrollbar MUTLAKA premium.css'deki gibi olacak
+```
+
+---
+
+## 🗄 **5. SQLITE ve VERİTABANI KURALLARI**
+
+```typescript
+// DOĞRU ✅
+class DatabaseService {
+  private db: Database.Database;
+
+  constructor() {
+    this.db = new Database('karaoke.db');
+    this.initialize();
+  }
+
+  private initialize(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS songs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        artist TEXT NOT NULL,
+        lyrics TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+  }
+
+  getSongById(id: number): Song | undefined {
+    return this.db.prepare('SELECT * FROM songs WHERE id = ?').get(id) as Song | undefined;
+  }
+}
+
+export default new DatabaseService();
+
+// YANLIŞ ❌ (ASLA)
+const db = new Database('karaoke.db'); // class içinde olmayan
+// string SQL, prepared statement olmadan
+```
+
+**KURAL:**
+```
+- Prepared statements zorunlu (SQL injection önlemi)
+- Transaction kullanılacak çoklu işlemlerde
+- Her veritabanı metodu try/catch içinde olacak
+- create_at DATETIME DEFAULT CURRENT_TIMESTAMP her zaman
+- Foreign key constraints aktif olacak
+- Tek bir instance olacak (Singleton pattern)
+```
+
+---
+
+## 🤖 **6. TENSORFLOW.JS ve KONUŞMA TANIMA KURALLARI**
+
+```typescript
+// DOĞRU ✅
+export class SpeechRecognitionService {
+  private recognizer: speechCommands.SpeechCommandRecognizer | null = null;
+  private MIN_CONFIDENCE = 0.75;
+
+  async initialize(): Promise<void> {
+    await tf.ready();
+    this.recognizer = speechCommands.create('BROWSER_FFT');
+    await this.recognizer.ensureModelLoaded();
+    
+    await this.recognizer.listen(
+      (result) => this.handleResult(result),
+      {
+        includeSpectrogram: false,
+        probabilityThreshold: this.MIN_CONFIDENCE,
+      }
+    );
+  }
+
+  private handleResult(result: speechCommands.SpeechCommandRecognizerResult): void {
+    const scores = result.scores as Float32Array;
+    const maxScore = Math.max(...scores);
+    // ...
+  }
+}
+
+// YANLIŞ ❌
+recognizer.listen(callback); // opsiyonlar yok
+// tip belirtmeleri yok, any kullanımı
+```
+
+**KURAL:**
+```
+- tf.ready() her zaman await edilecek
+- Model yüklenene kadar loading state olacak
+- Probability threshold minimum 0.75 olacak
+- Her kelime işlendikten sonra memory temizliği (tf.tidy)
+- Model dispose edilecek component unmount'ta
+- WebGL backend kullanılacak: tf.setBackend('webgl')
+- overlapFactor 0.5 olacak
+```
+
+---
+
+## ⚡ **7. PERFORMANS ve OPTİMİZASYON MUTLAK KURALLARI**
+
+```markdown
+- React.memo() ile component memoization zorunlu
+- useCallback ile her fonksiyon wrap edilecek
+- useMemo ile hesaplamalar cache'lenecek
+- Large lists için virtual scrolling (react-window) kullanılacak
+- Image optimizasyon: WebP format, lazy loading
+- Code splitting: dynamic import() kullanılacak
+- TensorFlow modeli lazy load edilecek
+- SQLite bağlantısı singleton olacak
+- Event listener'lar useEffect cleanup ile kaldırılacak
+- RAF (requestAnimationFrame) kullanılacak animasyonlarda
+- Memory leak önlemi: component unmount'ta tüm subscription'lar temizlenecek
+```
+
+---
+
+## 🛡 **8. HATA YÖNETİMİ ve DEBUG KURALLARI**
+
+```typescript
+// DOĞRU ✅
+try {
+  await this.recognizer.listen(...);
+} catch (error) {
+  if (error instanceof Error) {
+    console.error('Hata:', error.message);
+    toast.error(`Mikrofon hatası: ${error.message}`);
+    this.handleError('MICROPHONE_ACCESS_DENIED');
+  }
+}
+
+// YANLIŞ ❌
+catch (e) { console.log(e); } // generic hata
+```
+
+**KURAL:**
+```
+- Her async işlem try/catch içinde olacak
+- Error boundary component'leri her sayfada olacak
+- Toast notification'lar react-hot-toast ile
+- Error log'ları SQLite'a kaydedilecek (error_logs table)
+- User-friendly hata mesajları, teknik jargon yok
+- Error code system: 'MICROPHONE_ACCESS_DENIED', 'MODEL_LOAD_FAILED'
+- Fallback UI'lar her zaman olacak
+- Sentry veya benzeri error tracking entegre edilecek (opsiyonel)
+```
+
+---
+
+## 📂 **9. DOSYA YAPISI ve ORGANİZASYON KURALLARI**
+
+```
+src/
+├── components/
+│   ├── Layout/          # Header, Footer, Navigation
+│   ├── Song/           # SongCard, SongList, SongForm
+│   ├── Player/         # KaraokePlayer, Controls, LyricsDisplay
+│   ├── Dashboard/      # Stats, Charts, Performance
+│   ├── Background/     # GradientBackground, Particles
+│   └── Loading/        # Skeletons, Spinners
+├── services/
+│   ├── SpeechRecognitionService.ts
+│   └── AudioProcessingService.ts
+├── engine/
+│   ├── LyricsMatcher.ts
+│   └── WordValidator.ts
+├── database/
+│   ├── DatabaseService.ts
+│   └── migrations/
+├── hooks/
+│   ├── useSpeechRecognition.ts
+│   ├── useLyricsSync.ts
+│   └── useTheme.ts
+├── utils/
+│   ├── stringUtils.ts
+│   ├── audioUtils.ts
+│   └── validation.ts
+├── types/
+│   └── index.ts        # Tüm TypeScript interface'leri
+├── store/              # Zustand/Jotai store'lar
+├── styles/
+│   ├── premium.css
+│   └── animations.css
+└── App.tsx
+```
+
+**KURAL:**
+```
+- Her klasör index.ts ile export edilecek (barrel export)
+- Import path'ler absolute: '@components/...' şeklinde
+- Her component kendi klasöründe: Component.tsx, index.ts, types.ts
+- Asset'ler public/ içinde, optimize edilmiş
+- Environment variable'lar .env.local'de, prefix: VITE_KARAOKE_
+```
+
+---
+
+## 💬 **10. CEVAP VERME ve İLETİŞİM KURALLARI**
+
+```markdown
+# Kullanıcıyla her zaman TÜRKÇE konuşacaksın
+# Kod örneği verirken SADECE çalışan, eksiksiz kod vereceksin
+# Yorum satırları Türkçe ve detaylı olacak
+# Açıklama yaparken "Şöyle yapabilirsin" demeyeceksin, "ŞÖYLE YAPACAKSIN" diyecek ve direkt kod vereceksin
+- Her cevaptan önce kullanıcın isteğini analiz edeceksin
+- Eğer eksik bilgi varsa, varsayım yapmayacaksın, SORU soracaksın
+- Kullanıcı "profesyonel" dediyse, production-ready kod vereceksin
+- Error handling, loading states, typescript types olmadan kod vermeyeceksin
+- Her zaman best practices ve modern pattern'leri kullanacaksın
+- Kullanıcı "premium" dediyse, glassmorphism, animation, micro-interaction eklemeyi unutmayacaksın
+- kodu üç bölüm halinde verme, TAMAMINI tek seferde vereceksin
+- Eğer bir şeyin doğru olmadığından emin değilsen, KESİNLİKLE kod yazmayacaksın, önce soracaksın
+```
+
+---
+
+## 🚀 **11. KOPYALA-YAPIŞTIR HAZIR .cursorrules DOSYASI**
+
+Projenin ana dizinine `.cursorrules` adıyla kaydet:
+
+```text
+# KARAOKE NOT PRO - CURSOR AI MUTLAK KURALLARI
+
+## PROJE GENEL
+- REACT + TYPESCRIPT + TAILWIND CSS ONLY
+- Functional components + Hooks ONLY (Class component YASAK)
+- Maximum 150 satır per component
+- Named exports ONLY (Default export YASAK)
+- Türkçe yorumlar, İngilizce YASAK
+- Kod tekrarı %0 (DRY principle)
+- Her fonksiyon 1 iş yapacak (Single Responsibility)
+
+## TEKNOLOJİ STACK
+- React 18+, TypeScript (strict mode), Tailwind CSS 3+
+- Framer Motion (animasyonlar), Lucide React (ikonlar)
+- TensorFlow.js 4.x, @tensorflow-models/speech-commands
+- Better-sqlite3 (SQLite), sql.js (fallback)
+- Sadece yukarıdaki kütüphaneler kullanılacak, başka öneri YOK
+
+## TYPESCRIPT KURALLARI
+- Her değişkenin explicit tipi olacak (infer YASAK)
+- Her prop interface'i ayrı tanımlanacak
+- async/await ONLY (then/catch YASAK)
+- Generic types kullanılacak: React.FC<Props>
+- Error types: catch (error: unknown) { if (error instanceof Error) ... }
+
+## REACT KURALLARI
+- useCallback ile HER fonksiyon wrap edilecek
+- useMemo ile hesaplamalar cache'lenecek
+- useEffect dependency array eksiksiz olacak
+- Custom hooks: use prefix zorunlu
+- React.memo() ile component memoization zorunlu
+- Error boundary her sayfada olacak
+
+## TASARIM MUTLAKLARI
+- Glassmorphism: bg-white/5 backdrop-blur-xl border border-white/10
+- Border radius min 12px (rounded-xl), kartlar 24px (rounded-2xl)
+- Sadece renkler: purple-500, pink-500, gray-900/800, white/5
+- Gradient: bg-gradient-to-r from-purple-500 to-pink-500 ONLY
+- Animasyon: Framer Motion spring physics ONLY
+- Shadow: shadow-purple-500/40, hover:shadow-purple-500/60
+- Custom scrollbar premium.css'deki gibi
+
+## SQLITE KURALLARI
+- Prepared statements ZORUNLU (SQL injection önlemi)
+- Transactions çoklu işlemlerde
+- Singleton pattern: tek instance
+- try/catch her metotta
+- created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+- Foreign key constraints aktif
+
+## TENSORFLOW.JS KURALLARI
+- tf.ready() her zaman await edilecek
+- Probability threshold MIN 0.75
+- WebGL backend: tf.setBackend('webgl')
+- overlapFactor: 0.5
+- Memory tf.tidy() ile temizlenecek
+- Model dispose edilecek (cleanup)
+- Loading state olacak
+
+## HATA YÖNETİMİ
+- Her async işlem try/catch içinde
+- Toast notification: react-hot-toast
+- User-friendly mesajlar, teknik jargon YOK
+- Error codes: 'MICROPHONE_ACCESS_DENIED', 'MODEL_LOAD_FAILED'
+- SQLite error_logs table'a kaydedilecek
+- Fallback UI her zaman
+
+## PERFORMANS
+- React.memo, useCallback, useMemo zorunlu
+- Virtual scrolling 50+ item için
+- Code splitting: dynamic import()
+- TensorFlow model lazy load
+- Event listener cleanup useEffect return
+- RAF animasyonlarda
+- Image optimizasyon: WebP, lazy loading
+
+## DOSYA YAPISI
+- Barrel exports (index.ts) her klasörde
+- Absolute imports: @components/...
+- Her component kendi klasöründe: Component.tsx, index.ts, types.ts
+- Assetler public/, optimize edilmiş
+- Env variables: VITE_KARAOKE_*
+
+## CEVAP VERME
+- Sadece TÜRKÇE konuş
+- Sadece çalışan, eksiksiz kod ver
+- "Şöyle yapabilirsin" deme, "ŞÖYLE YAPACAKSIN" de ve kod ver
+- Eksik bilgi varsa SORU sor, varsayım YAPMA
+- Production-ready kod: loading, error, typescript
+- Premium dediyse glassmorphism, animation ekle
+- Kodu tek parça halinde ver, üçe bölme
+- Emin değilsen KOD YAZMA, önce sor
+```
+
+---
+
+---
+alwaysApply: true
+---
