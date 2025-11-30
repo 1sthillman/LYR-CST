@@ -33,16 +33,28 @@ export class NativeSpeechRecognitionService {
 
       // Android'den gelen mesajları dinle
       (window as any).onNativeSpeechResult = (transcript: string, confidence: number) => {
+        console.log(`📱 [NATIVE SPEECH] ⚡⚡⚡ onNativeSpeechResult CALLBACK TETİKLENDİ! ⚡⚡⚡`);
+        console.log(`📱 [NATIVE SPEECH] Transcript: "${transcript}" | Confidence: ${confidence.toFixed(3)}`);
+        console.log(`📱 [NATIVE SPEECH] isListening: ${this.isListening} | callback var mı: ${!!this.callback}`);
+        
         if (this.isListening && this.callback) {
           console.log(`📱 [NATIVE SPEECH] ⚡⚡⚡ Kelime algılandı: "${transcript}" | Confidence: ${confidence.toFixed(3)} ⚡⚡⚡`);
           // Kelimeleri temizle ve ayır
           const words = transcript.trim().toLowerCase().split(/\s+/).filter((w: string) => w.length > 0);
-          words.forEach((word: string) => {
+          console.log(`📱 [NATIVE SPEECH] Kelimelere ayrıldı: ${words.length} kelime`, words);
+          
+          words.forEach((word: string, index: number) => {
             const cleanWord = word.replace(/[.,!?;:'"()\[\]{}…–—]/g, '').trim();
             if (cleanWord.length > 0) {
+              console.log(`📱 [NATIVE SPEECH] Kelime[${index}] işleniyor: "${cleanWord}"`);
               this.callback!(cleanWord, confidence);
+              console.log(`📱 [NATIVE SPEECH] Kelime[${index}] callback'e gönderildi: "${cleanWord}"`);
+            } else {
+              console.log(`📱 [NATIVE SPEECH] Kelime[${index}] temizlendikten sonra boş, atlanıyor: "${word}"`);
             }
           });
+        } else {
+          console.warn(`⚠️ [NATIVE SPEECH] Callback çağrılamadı! isListening: ${this.isListening}, callback: ${!!this.callback}`);
         }
       };
 
@@ -55,10 +67,21 @@ export class NativeSpeechRecognitionService {
 
       // Android'e başlatma mesajı gönder
       console.log('📱 [NATIVE SPEECH] Android\'e startListening() mesajı gönderiliyor...');
-      bridge.startListening();
+      console.log('📱 [NATIVE SPEECH] Bridge var mı:', !!bridge);
+      console.log('📱 [NATIVE SPEECH] Bridge type:', typeof bridge);
+      console.log('📱 [NATIVE SPEECH] Bridge startListening var mı:', typeof bridge.startListening);
+      
+      try {
+        bridge.startListening();
+        console.log('✅ [NATIVE SPEECH] bridge.startListening() çağrıldı');
+      } catch (bridgeError) {
+        console.error('❌ [NATIVE SPEECH] bridge.startListening() hatası:', bridgeError);
+        throw bridgeError;
+      }
       
       this.isListening = true;
       console.log('✅ [NATIVE SPEECH] Native Android Speech Recognition başlatıldı - Dinleme aktif!');
+      console.log('📱 [NATIVE SPEECH] onNativeSpeechResult callback ayarlandı:', typeof (window as any).onNativeSpeechResult);
     } catch (error) {
       console.error('❌ [NATIVE SPEECH] Başlatılamadı:', error);
       if (onError) {

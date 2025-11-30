@@ -261,8 +261,11 @@ public class MainActivity extends BridgeActivity {
 
                 @Override
                 public void onResults(Bundle results) {
+                    Log.d("LYRICST", "⚡⚡⚡ onResults TETİKLENDİ! ⚡⚡⚡");
                     ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     float[] confidenceScores = results.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
+                    
+                    Log.d("LYRICST", "Matches var mı: " + (matches != null) + " | Size: " + (matches != null ? matches.size() : 0));
                     
                     if (matches != null && matches.size() > 0) {
                         String transcript = matches.get(0);
@@ -270,24 +273,32 @@ public class MainActivity extends BridgeActivity {
                             ? confidenceScores[0] 
                             : 0.8f;
                         
-                        Log.d("LYRICST", "Kelime algılandı: " + transcript + " | Confidence: " + confidence);
+                        Log.d("LYRICST", "⚡⚡⚡ Kelime algılandı: " + transcript + " | Confidence: " + confidence + " ⚡⚡⚡");
                         
                         // JavaScript'e gönder
                         WebView webView = getBridge().getWebView();
                         if (webView != null) {
+                            String escapedTranscript = transcript.replace("'", "\\'").replace("\n", " ").replace("\r", " ");
+                            String js = String.format(
+                                "if (window.onNativeSpeechResult) { console.log('📱 [ANDROID->JS] onNativeSpeechResult çağrılıyor: \"%s\", %f'); window.onNativeSpeechResult('%s', %f); } else { console.error('❌ [ANDROID->JS] onNativeSpeechResult callback yok!'); }",
+                                escapedTranscript, confidence,
+                                escapedTranscript, confidence
+                            );
+                            Log.d("LYRICST", "JavaScript kodu: " + js);
                             webView.post(() -> {
-                                String js = String.format(
-                                    "if (window.onNativeSpeechResult) window.onNativeSpeechResult('%s', %f);",
-                                    transcript.replace("'", "\\'").replace("\n", " ").replace("\r", " "),
-                                    confidence
-                                );
                                 webView.evaluateJavascript(js, null);
+                                Log.d("LYRICST", "JavaScript kodu çalıştırıldı");
                             });
+                        } else {
+                            Log.e("LYRICST", "WebView bulunamadı!");
                         }
+                    } else {
+                        Log.w("LYRICST", "onResults tetiklendi ama matches boş!");
                     }
                     
                     // Sürekli dinleme için yeniden başlat
                     if (isListening) {
+                        Log.d("LYRICST", "Sürekli dinleme için yeniden başlatılıyor...");
                         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                             if (isListening) {
                                 startNativeSpeechRecognition();
@@ -298,8 +309,11 @@ public class MainActivity extends BridgeActivity {
 
                 @Override
                 public void onPartialResults(Bundle partialResults) {
+                    Log.d("LYRICST", "⚡⚡⚡ onPartialResults TETİKLENDİ! ⚡⚡⚡");
                     ArrayList<String> matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     float[] confidenceScores = partialResults.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
+                    
+                    Log.d("LYRICST", "Partial matches var mı: " + (matches != null) + " | Size: " + (matches != null ? matches.size() : 0));
                     
                     if (matches != null && matches.size() > 0) {
                         String transcript = matches.get(0);
@@ -307,20 +321,27 @@ public class MainActivity extends BridgeActivity {
                             ? confidenceScores[0] 
                             : 0.7f;
                         
-                        Log.d("LYRICST", "Geçici sonuç: " + transcript + " | Confidence: " + confidence);
+                        Log.d("LYRICST", "⚡⚡⚡ Geçici sonuç: " + transcript + " | Confidence: " + confidence + " ⚡⚡⚡");
                         
                         // JavaScript'e gönder (interim result)
                         WebView webView = getBridge().getWebView();
                         if (webView != null) {
+                            String escapedTranscript = transcript.replace("'", "\\'").replace("\n", " ").replace("\r", " ");
+                            String js = String.format(
+                                "if (window.onNativeSpeechResult) { console.log('📱 [ANDROID->JS] onNativeSpeechResult (PARTIAL) çağrılıyor: \"%s\", %f'); window.onNativeSpeechResult('%s', %f); } else { console.error('❌ [ANDROID->JS] onNativeSpeechResult callback yok!'); }",
+                                escapedTranscript, confidence,
+                                escapedTranscript, confidence
+                            );
+                            Log.d("LYRICST", "JavaScript kodu (PARTIAL): " + js);
                             webView.post(() -> {
-                                String js = String.format(
-                                    "if (window.onNativeSpeechResult) window.onNativeSpeechResult('%s', %f);",
-                                    transcript.replace("'", "\\'").replace("\n", " ").replace("\r", " "),
-                                    confidence
-                                );
                                 webView.evaluateJavascript(js, null);
+                                Log.d("LYRICST", "JavaScript kodu (PARTIAL) çalıştırıldı");
                             });
+                        } else {
+                            Log.e("LYRICST", "WebView bulunamadı (PARTIAL)!");
                         }
+                    } else {
+                        Log.w("LYRICST", "onPartialResults tetiklendi ama matches boş!");
                     }
                 }
 
