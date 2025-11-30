@@ -39,7 +39,7 @@ export class SpeechRecognitionService {
 
       console.log('✅ Web Speech API bulundu');
       
-      // MOBİL TARAYICI KONTROLÜ
+      // MOBİL TARAYICI KONTROLÜ (global - tüm fonksiyon boyunca kullanılacak)
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       if (isMobile) {
         console.log('📱 Mobil tarayıcı tespit edildi - telefon görüşmesi gibi kesintisiz dinleme aktif');
@@ -67,23 +67,51 @@ export class SpeechRecognitionService {
       recognition.continuous = true; // Sürekli dinleme
       recognition.interimResults = true; // GEÇİCİ SONUÇLARI DA AL - anlık işaretleme için
       
-      // TÜRKÇE DİL DESTEĞİ - Android WebView'de farklı kodlar deneyelim
-      // Önce tr-TR, sonra tr, sonra en-US (fallback)
-      const supportedLangs = ['tr-TR', 'tr', 'en-US'];
+      // TÜRKÇE DİL DESTEĞİ - MOBİL İÇİN ÖZEL AYARLAR
+      // Mobilde daha fazla dil kodu deneyelim
+      const supportedLangs = isMobile 
+        ? ['tr-TR', 'tr', 'tr_TR', 'turkish', 'tr-TR-Turkish', 'en-US'] // Mobil için daha fazla varyasyon
+        : ['tr-TR', 'tr', 'en-US']; // PC için standart
+      
       let langSet = false;
+      let finalLang = 'en-US'; // Fallback
+      
       for (const lang of supportedLangs) {
         try {
           recognition.lang = lang;
-          langSet = true;
-          console.log(`✅ Dil ayarı: ${lang}`);
-          break;
+          // Mobilde dil ayarının gerçekten uygulandığını kontrol et
+          if (recognition.lang === lang || recognition.lang.toLowerCase().includes('tr')) {
+            langSet = true;
+            finalLang = lang;
+            console.log(`✅ Dil ayarı başarılı: ${lang} | Recognition.lang: ${recognition.lang}`);
+            break;
+          } else {
+            console.warn(`⚠️ Dil ${lang} ayarlanamadı, recognition.lang: ${recognition.lang}`);
+          }
         } catch (e) {
-          console.warn(`⚠️ Dil ${lang} desteklenmiyor, bir sonrakini deniyor...`);
+          console.warn(`⚠️ Dil ${lang} desteklenmiyor, bir sonrakini deniyor...`, e);
         }
       }
+      
       if (!langSet) {
-        recognition.lang = 'en-US'; // Fallback
-        console.warn('⚠️ Türkçe desteklenmiyor, İngilizce kullanılıyor');
+        // Son çare: tr-TR'yi zorla ayarla
+        try {
+          recognition.lang = 'tr-TR';
+          finalLang = 'tr-TR';
+          console.log(`⚠️ Fallback: tr-TR zorla ayarlandı | Recognition.lang: ${recognition.lang}`);
+        } catch (e) {
+          recognition.lang = 'en-US';
+          finalLang = 'en-US';
+          console.error('❌ Türkçe ayarlanamadı, İngilizce kullanılıyor:', e);
+        }
+      }
+      
+      // Mobilde dil ayarını doğrula
+      if (isMobile) {
+        console.log(`📱 [MOBİL] Dil ayarı doğrulaması: ${recognition.lang} | Hedef: ${finalLang}`);
+        if (!recognition.lang.toLowerCase().includes('tr')) {
+          console.error('❌ [MOBİL] UYARI: Türkçe dil ayarı uygulanamadı! Recognition.lang:', recognition.lang);
+        }
       }
       
       recognition.maxAlternatives = 1; // Sadece en iyi sonuç
@@ -399,15 +427,17 @@ export class SpeechRecognitionService {
           }
 
           // AKILLI THRESHOLD - Sessizlik ve arka plan gürültüsü algılanmasın
-          // MOBİL İÇİN ÖZEL: Mobilde confidence değerleri genelde daha düşük, bu yüzden daha esnek threshold
-          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          // MOBİL İÇİN ÇOK AGRESİF AYARLAR: Mobilde confidence değerleri çok düşük olabilir
+          // isMobile değişkeni initialize fonksiyonunda zaten tanımlı, burada scope dışında
+          // Bu yüzden tekrar kontrol ediyoruz
+          const isMobileLocal = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
           
-          // Confidence threshold - mobilde daha esnek
+          // Confidence threshold - mobilde ÇOK daha esnek (Türkçe algılama için kritik)
           let minConfidence: number;
           if (result.isFinal) {
-            minConfidence = isMobile ? 0.30 : 0.40; // Final: Mobil 0.30, PC 0.40
+            minConfidence = isMobileLocal ? 0.20 : 0.40; // Final: Mobil 0.20 (çok agresif), PC 0.40
           } else {
-            minConfidence = isMobile ? 0.25 : 0.35; // Interim: Mobil 0.25, PC 0.35
+            minConfidence = isMobileLocal ? 0.15 : 0.35; // Interim: Mobil 0.15 (çok agresif), PC 0.35
           }
 
           if (transcript.length > 0 && confidence >= minConfidence) {
@@ -429,10 +459,14 @@ export class SpeechRecognitionService {
 
                 // Interim results için daha düşük confidence (anlık algılama için)
                 // Final results için daha yüksek confidence (kesin algılama için)
-                const finalConfidence = result.isFinal ? Math.max(confidence, 0.8) : Math.max(confidence, 0.7);
+                // MOBİL İÇİN ÖZEL: Mobilde confidence değerlerini daha agresif kullan
+                const finalConfidence = result.isFinal 
+                  ? (isMobileLocal ? Math.max(confidence, 0.6) : Math.max(confidence, 0.8)) // Mobil: 0.6, PC: 0.8
+                  : (isMobileLocal ? Math.max(confidence, 0.5) : Math.max(confidence, 0.7)); // Mobil: 0.5, PC: 0.7
                 
-                // DETAYLI LOG - Algılanan kelimeyi logla
-                console.log(`🎤 [SPEECH] Kelime algılandı: "${cleanWord}" | Confidence: ${finalConfidence.toFixed(2)} | Type: ${result.isFinal ? 'FINAL' : 'INTERIM'} | Original: "${word}"`);
+                // DETAYLI LOG - Algılanan kelimeyi logla (mobilde daha detaylı)
+                const logPrefix = isMobileLocal ? '📱 [MOBİL SPEECH]' : '🎤 [SPEECH]';
+                console.log(`${logPrefix} Kelime algılandı: "${cleanWord}" | Confidence: ${finalConfidence.toFixed(2)} | Type: ${result.isFinal ? 'FINAL' : 'INTERIM'} | Original: "${word}" | Lang: ${this.recognition?.lang || 'unknown'}`);
                 
                 // Callback'e gönder - ANLIK İŞARETLEME (INTERIM VE FINAL)
                 // Interim results anlık algılama için kritik - hemen gönder
