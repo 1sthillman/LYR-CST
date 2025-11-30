@@ -106,26 +106,25 @@ export class SpeechRecognitionService {
 
       recognition.onend = () => {
         // SÜREKLI DİNLEME - Otomatik olarak yeniden başlat (susulduğunda bile)
-        // ANDROID WEBVIEW İÇİN ÖZEL: onend çok sık tetikleniyor, daha agresif kontrol
+        // ÖNEMLİ: onend çok sık tetiklenebilir, agresif kontrol yap
         if (this.isListening && this.recognition) {
-          // Android WebView'da onend çok sık tetikleniyor - daha uzun bekleme
           const lastRestartTime = (this as any).lastRestartTime || 0;
           const timeSinceLastRestart = Date.now() - lastRestartTime;
           
-          // Son restart'tan 2 saniye geçmediyse restart yapma (Android WebView için daha uzun)
-          if (timeSinceLastRestart < 2000) {
-            console.log('⚠️ [SPEECH] onend çok sık tetiklendi (Android WebView), restart atlanıyor');
+          // Son restart'tan 3 saniye geçmediyse restart yapma (çok sık restart önleme)
+          if (timeSinceLastRestart < 3000) {
+            // Sessizce atla - log yok (performans için)
             return;
           }
           
           (this as any).lastRestartTime = Date.now();
           
-          // Android WebView için daha uzun bekleme - mikrofon stabilitesi için
+          // Daha uzun bekleme - mikrofon stabilitesi için
           setTimeout(() => {
             if (this.isListening && this.recognition) {
               // Restart yapmadan önce recognition'ın durumunu kontrol et
               try {
-                // Android WebView'da recognition state'ini kontrol et
+                // Recognition state'ini kontrol et
                 const state = (this.recognition as any).state;
                 if (state === 'listening' || state === 'starting') {
                   // Zaten dinliyor veya başlıyor, restart yapma
@@ -133,20 +132,18 @@ export class SpeechRecognitionService {
                 }
                 
                 this.recognition.start();
-                console.log('✅ [SPEECH] Recognition yeniden başlatıldı (onend)');
               } catch (error: any) {
-                // "already started" hatası normal
+                // "already started" hatası normal, görmezden gel
                 if (error?.message?.includes('already') || 
                     error?.message?.includes('started') ||
                     error?.name === 'InvalidStateError') {
                   return;
                 }
                 // Diğer hatalarda restart yap
-                console.warn('⚠️ [SPEECH] Start hatası, restart yapılıyor:', error);
                 this.restartRecognition();
               }
             }
-          }, 1000); // Android WebView için 1 saniye bekleme - mikrofon stabilitesi için
+          }, 1500); // 1.5 saniye bekleme - mikrofon stabilitesi için
         }
       };
 
@@ -176,23 +173,23 @@ export class SpeechRecognitionService {
       clearTimeout(this.restartTimeout);
     }
     
-    // Android WebView için daha uzun bekleme - mikrofon stabilitesi için
+    // Çok sık restart önleme - mikrofon stabilitesi için
     const lastRestartTime = (this as any).lastRestartTime || 0;
     const timeSinceLastRestart = Date.now() - lastRestartTime;
     
-    // Son restart'tan 2 saniye geçmediyse restart yapma (Android WebView için daha uzun)
-    if (timeSinceLastRestart < 2000) {
-      console.log('⚠️ [SPEECH] Çok sık restart önlendi (Android WebView)');
+    // Son restart'tan 3 saniye geçmediyse restart yapma
+    if (timeSinceLastRestart < 3000) {
+      // Sessizce atla - log yok (performans için)
       return;
     }
     
     (this as any).lastRestartTime = Date.now();
     
-    // Android WebView için daha uzun delay - mikrofon stabilitesi için
+    // Daha uzun delay - mikrofon stabilitesi için
     this.restartTimeout = window.setTimeout(() => {
       if (this.isListening && this.recognition) {
         try {
-          // Android WebView'da recognition state'ini kontrol et
+          // Recognition state'ini kontrol et
           const state = (this.recognition as any).state;
           if (state === 'listening' || state === 'starting') {
             // Zaten dinliyor veya başlıyor, restart yapma
@@ -200,7 +197,6 @@ export class SpeechRecognitionService {
           }
           
           this.recognition.start();
-          console.log('✅ [SPEECH] Recognition yeniden başlatıldı (restart)');
         } catch (error: any) {
           // "already started" hatası normal, görmezden gel
           if (error?.message?.includes('already') || 
@@ -211,12 +207,11 @@ export class SpeechRecognitionService {
           
           // Hata olursa daha uzun bekle ve tekrar dene
           if (this.isListening) {
-            console.warn('⚠️ [SPEECH] Restart hatası, tekrar deneniyor:', error);
-            setTimeout(() => this.restartRecognition(), 2000); // Android WebView için 2 saniye bekleme
+            setTimeout(() => this.restartRecognition(), 3000); // 3 saniye bekleme
           }
         }
       }
-    }, 1500); // Android WebView için 1.5 saniye bekleme - mikrofon stabilitesi için
+    }, 2000); // 2 saniye bekleme - mikrofon stabilitesi için
   }
 
   /**
