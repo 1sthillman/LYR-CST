@@ -114,32 +114,57 @@ export class SpeechRecognitionService {
         if (event.error === 'no-speech') {
           return; // Sessizlik normal, devam et - log yok
         }
+        
+        // İzin reddedildi - gerçek hata
         if (event.error === 'not-allowed') {
           console.error('❌ [SPEECH] Mikrofon erişimi reddedildi!');
-          // Toast için callback'e bildir
           if (this.callback) {
-            // Error callback - özel bir flag ile
             (this as any).onErrorCallback?.(new Error('Mikrofon erişimi reddedildi'));
           }
+          this.stop();
           throw new Error('Mikrofon erişimi reddedildi');
         }
+        
+        // Aborted ve Network hataları - Speech Recognition API'nin normal davranışı
+        // continuous: true modunda bu hatalar sık görülür ve gerçek bir sorun değildir
+        // Sessizce handle et - log ve toast yok
         if (event.error === 'aborted' || event.error === 'network') {
-          console.warn('⚠️ [SPEECH] Recognition aborted/network - 500ms sonra yeniden başlatılıyor...');
-          // Toast için callback'e bildir
-          if (this.callback) {
-            (this as any).onErrorCallback?.(new Error('Mikrofon hatası, yeniden bağlanıyor...'));
-          }
+          // Sessizce restart yap - log ve toast yok (normal API davranışı)
           if (this.isListening && this.recognition) {
-            setTimeout(() => this.restartRecognition(), 500);
+            // Kısa bir delay ile restart (API'nin kendini toparlaması için)
+            setTimeout(() => {
+              if (this.isListening && this.recognition) {
+                try {
+                  // State kontrolü - eğer hala aktifse restart yapma
+                  const state = (this.recognition as any).state;
+                  if (state === 'listening' || state === 'starting' || state === 'processing') {
+                    return; // Zaten aktif, restart yapma
+                  }
+                  // Sessizce restart
+                  this.recognition.start();
+                } catch (error: any) {
+                  // "already started" hatası normal, görmezden gel
+                  if (error?.message?.includes('already') || 
+                      error?.message?.includes('started') ||
+                      error?.name === 'InvalidStateError') {
+                    return;
+                  }
+                  // Diğer hatalarda restartRecognition kullan
+                  this.restartRecognition();
+                }
+              }
+            }, 500);
           }
-          return;
+          return; // Normal API davranışı, devam et
         }
-        // Diğer hatalarda yeniden başlat
+        
+        // Diğer hatalarda (service-unavailable, bad-grammar, vb.) sessizce restart
         if (this.isListening && this.recognition) {
-          console.warn('🔄 [SPEECH] Hata nedeniyle yeniden başlatılıyor...', event.error);
-          if (this.callback) {
-            (this as any).onErrorCallback?.(new Error(`Mikrofon hatası: ${event.error}`));
+          // Sadece gerçekten kritik hatalarda log göster
+          if (event.error === 'service-unavailable') {
+            console.warn('⚠️ [SPEECH] Servis kullanılamıyor, yeniden başlatılıyor...');
           }
+          // Sessizce restart yap
           this.restartRecognition();
         }
       };
