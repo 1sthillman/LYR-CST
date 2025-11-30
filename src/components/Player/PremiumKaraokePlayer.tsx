@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MicOff, RotateCcw, Settings, 
   Volume2, Heart, Share2, X,
-  Target, Zap
+  Target, Zap, Bug
 } from 'lucide-react';
 import speechRecognitionService from '../../services/SpeechRecognitionService';
 import { dummyRecorderService } from '../../services/DummyRecorderService';
@@ -42,6 +42,10 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
   const [error, setError] = useState<string | null>(null);
   const [showAudioPanel, setShowAudioPanel] = useState<boolean>(false);
   
+  // Debug logları için
+  const debugLogsRef = useRef<string[]>([]);
+  const maxDebugLogs = 1000; // Maksimum 1000 log sakla
+  
   const matcherRef = useRef<LyricsMatcher>(new LyricsMatcher());
   const lyricsRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(0);
@@ -69,6 +73,46 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
 
   const words: string[] = lyrics.split(/\s+/).filter((w: string) => w.trim());
 
+  // Debug log ekle
+  const addDebugLog = useCallback((message: string) => {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}`;
+    debugLogsRef.current.push(logEntry);
+    
+    // Maksimum log sayısını aşarsa eski logları sil
+    if (debugLogsRef.current.length > maxDebugLogs) {
+      debugLogsRef.current = debugLogsRef.current.slice(-maxDebugLogs);
+    }
+  }, []);
+
+  // Debug loglarını kopyala
+  const copyDebugLogs = useCallback(async () => {
+    try {
+      const logs = debugLogsRef.current.join('\n');
+      const debugInfo = `=== KARAOKE DEBUG LOGS ===\nŞarkı: ${songTitle}\nSanatçı: ${artist}\nDinleme Durumu: ${isListening ? 'AÇIK' : 'KAPALI'}\nPozisyon: ${currentWordIndex}/${words.length}\nDoğruluk: ${accuracy}%\n\n=== CONSOLE LOGS ===\n${logs}\n\n=== SON ===`;
+      
+      // Clipboard API kullan
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(debugInfo);
+        toast.success('🐛 Debug logları kopyalandı!', { duration: 3000 });
+      } else {
+        // Fallback: Textarea kullan
+        const textarea = document.createElement('textarea');
+        textarea.value = debugInfo;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        toast.success('🐛 Debug logları kopyalandı!', { duration: 3000 });
+      }
+    } catch (error) {
+      console.error('Debug logları kopyalanamadı:', error);
+      toast.error('Debug logları kopyalanamadı');
+    }
+  }, [songTitle, artist, isListening, currentWordIndex, words.length, accuracy]);
+
   // Uzun şarkılar için virtual display kullan (500+ kelime)
   useEffect(() => {
     if (words.length > 500) {
@@ -84,6 +128,53 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     setAccuracy(0);
     console.log('Lyrics ayarlandı, kelime sayısı:', words.length);
   }, [lyrics]);
+
+  // Debug loglarını topla - Karaoke modunda tüm logları yakala
+  useEffect(() => {
+    if (!isListening) {
+      debugLogsRef.current = []; // Karaoke kapalıyken logları temizle
+      return;
+    }
+
+    // Orijinal console metodlarını sakla
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    // Console.log override
+    console.log = (...args: any[]) => {
+      originalLog.apply(console, args);
+      const logMessage = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+      addDebugLog(`[LOG] ${logMessage}`);
+    };
+
+    // Console.error override
+    console.error = (...args: any[]) => {
+      originalError.apply(console, args);
+      const logMessage = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+      addDebugLog(`[ERROR] ${logMessage}`);
+    };
+
+    // Console.warn override
+    console.warn = (...args: any[]) => {
+      originalWarn.apply(console, args);
+      const logMessage = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+      addDebugLog(`[WARN] ${logMessage}`);
+    };
+
+    return () => {
+      // Restore original console methods
+      console.log = originalLog;
+      console.error = originalError;
+      console.warn = originalWarn;
+    };
+  }, [isListening, addDebugLog]);
 
   // Gerçek Zamanlı Mikrofon Analizi - Web Audio API ile
   useEffect(() => {
@@ -574,6 +665,26 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
               >
                 <Share2 className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
               </motion.button>
+              
+              {/* Debug/Hata Ayıklama */}
+              {isListening && (
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={copyDebugLogs}
+                  className="p-2 sm:p-3 bg-white/5 rounded-xl border border-white/10 relative"
+                  title="Debug loglarını kopyala"
+                >
+                  <Bug className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
+                  {debugLogsRef.current.length > 0 && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-900"
+                    />
+                  )}
+                </motion.button>
+              )}
               
               {/* Ayarlar */}
               <motion.button
