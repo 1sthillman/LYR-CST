@@ -47,6 +47,11 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
   const startTimeRef = useRef<number>(0);
   const [useVirtualDisplay, setUseVirtualDisplay] = useState<boolean>(false);
   
+  // Mikrofon analizi için refs
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  
   // Matcher'a pozisyon değişikliği callback'i ayarla
   useEffect(() => {
     matcherRef.current.setOnPositionChange((newPosition: number) => {
@@ -80,11 +85,101 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     console.log('Lyrics ayarlandı, kelime sayısı:', words.length);
   }, [lyrics]);
 
-  // Ses Dalga Animasyonu
+  // Gerçek Zamanlı Mikrofon Analizi - Web Audio API ile
   useEffect(() => {
-    if (isListening) {
+    if (!isListening) {
+      // Mikrofon kapalıysa analizi durdur
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      setWaveData(Array(50).fill(0));
+      return;
+    }
+
+    // Mikrofon stream'ini al
+    const stream = (window as any).__microphoneStream as MediaStream | undefined;
+    if (!stream) {
+      console.warn('⚠️ [PLAYER] Mikrofon stream bulunamadı, görselleştirme devre dışı');
+      return;
+    }
+
+    try {
+      // AudioContext oluştur (eğer yoksa)
+      if (!audioContextRef.current) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        audioContextRef.current = new AudioContextClass();
+      }
+
+      const audioContext = audioContextRef.current;
+      
+      // AnalyserNode oluştur
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256; // Frekans çözünürlüğü (128 barlar için yeterli)
+      analyser.smoothingTimeConstant = 0.8; // Yumuşak geçişler için
+      analyserRef.current = analyser;
+
+      // Mikrofon stream'ini AudioContext'e bağla
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      // Frekans verilerini almak için buffer
+      const bufferLength = analyser.frequencyBinCount; // 128 (fftSize / 2)
+      const dataArray = new Uint8Array(bufferLength);
+
+      // Gerçek zamanlı analiz fonksiyonu
+      const analyze = () => {
+        if (!isListening || !analyserRef.current) {
+          return;
+        }
+
+        // Frekans verilerini al
+        analyserRef.current.getByteFrequencyData(dataArray);
+
+        // 50 bar için verileri normalize et ve güncelle
+        const bars = 50;
+        const step = Math.floor(bufferLength / bars);
+        const newWaveData: number[] = [];
+
+        for (let i = 0; i < bars; i++) {
+          const index = i * step;
+          const value = dataArray[index] || 0;
+          // 0-255 arası değeri 0-100 yüzdesine çevir
+          const normalizedValue = (value / 255) * 100;
+          // Minimum %5 yükseklik (görsel için)
+          newWaveData.push(Math.max(normalizedValue, 5));
+        }
+
+        setWaveData(newWaveData);
+
+        // Bir sonraki frame için tekrar çağır
+        animationFrameRef.current = requestAnimationFrame(analyze);
+      };
+
+      // Analizi başlat
+      animationFrameRef.current = requestAnimationFrame(analyze);
+
+      // Cleanup
+      return () => {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        // Source'u disconnect et
+        if (source) {
+          try {
+            source.disconnect();
+          } catch (e) {
+            // Ignore
+          }
+        }
+        analyserRef.current = null;
+      };
+    } catch (error) {
+      console.error('❌ [PLAYER] Mikrofon analizi hatası:', error);
+      // Hata durumunda eski animasyonu kullan
       const interval = setInterval(() => {
-        setWaveData(Array(50).fill(0).map(() => Math.random() * 100));
+        setWaveData(Array(50).fill(0).map(() => Math.random() * 30 + 10));
       }, 100);
       return () => clearInterval(interval);
     }
