@@ -89,23 +89,53 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
   const copyDebugLogs = useCallback(async () => {
     try {
       const logs = debugLogsRef.current.join('\n');
-      const debugInfo = `=== KARAOKE DEBUG LOGS ===\nŞarkı: ${songTitle}\nSanatçı: ${artist}\nDinleme Durumu: ${isListening ? 'AÇIK' : 'KAPALI'}\nPozisyon: ${currentWordIndex}/${words.length}\nDoğruluk: ${accuracy}%\n\n=== CONSOLE LOGS ===\n${logs}\n\n=== SON ===`;
+      
+      // Ek bilgiler
+      const recognition = (speechRecognitionService as any).recognition;
+      const recognitionLang = recognition?.lang || 'unknown';
+      const recognitionState = recognition?.state || 'unknown';
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const userAgent = navigator.userAgent;
+      const platform = isMobile ? 'MOBİL' : 'PC';
+      
+      const debugInfo = `=== KARAOKE DEBUG LOGS ===
+Şarkı: ${songTitle}
+Sanatçı: ${artist}
+Dinleme Durumu: ${isListening ? 'AÇIK' : 'KAPALI'}
+Pozisyon: ${currentWordIndex}/${words.length}
+Doğruluk: ${accuracy}%
+Platform: ${platform}
+User Agent: ${userAgent}
+Recognition Lang: ${recognitionLang}
+Recognition State: ${recognitionState}
+Toplam Log Sayısı: ${debugLogsRef.current.length}
+
+=== CONSOLE LOGS ===
+${logs || '(Henüz log yok)'}
+
+=== SON ===`;
       
       // Clipboard API kullan
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(debugInfo);
-        toast.success('🐛 Debug logları kopyalandı!', { duration: 3000 });
+        toast.success(`🐛 ${debugLogsRef.current.length} adet debug logu kopyalandı!`, { duration: 3000 });
       } else {
         // Fallback: Textarea kullan
         const textarea = document.createElement('textarea');
         textarea.value = debugInfo;
         textarea.style.position = 'fixed';
         textarea.style.opacity = '0';
+        textarea.style.left = '-9999px';
         document.body.appendChild(textarea);
+        textarea.focus();
         textarea.select();
-        document.execCommand('copy');
+        try {
+          document.execCommand('copy');
+          toast.success(`🐛 ${debugLogsRef.current.length} adet debug logu kopyalandı!`, { duration: 3000 });
+        } catch (e) {
+          toast.error('Debug logları kopyalanamadı. Lütfen manuel olarak kopyalayın.');
+        }
         document.body.removeChild(textarea);
-        toast.success('🐛 Debug logları kopyalandı!', { duration: 3000 });
       }
     } catch (error) {
       console.error('Debug logları kopyalanamadı:', error);
@@ -129,50 +159,93 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     console.log('Lyrics ayarlandı, kelime sayısı:', words.length);
   }, [lyrics]);
 
-  // Debug loglarını topla - Karaoke modunda tüm logları yakala
+  // Debug loglarını topla - Component mount olduğunda başlat (karaoke başlamadan önce)
   useEffect(() => {
-    if (!isListening) {
-      debugLogsRef.current = []; // Karaoke kapalıyken logları temizle
-      return;
+    // Orijinal console metodlarını sakla (sadece bir kez)
+    if (!(window as any).__originalConsoleLog) {
+      (window as any).__originalConsoleLog = console.log;
+      (window as any).__originalConsoleError = console.error;
+      (window as any).__originalConsoleWarn = console.warn;
+      (window as any).__originalConsoleInfo = console.info;
+      (window as any).__originalConsoleDebug = console.debug;
     }
 
-    // Orijinal console metodlarını sakla
-    const originalLog = console.log;
-    const originalError = console.error;
-    const originalWarn = console.warn;
+    const originalLog = (window as any).__originalConsoleLog;
+    const originalError = (window as any).__originalConsoleError;
+    const originalWarn = (window as any).__originalConsoleWarn;
+    const originalInfo = (window as any).__originalConsoleInfo;
+    const originalDebug = (window as any).__originalConsoleDebug;
 
-    // Console.log override
+    // Helper function to format log message
+    const formatLogMessage = (args: any[]): string => {
+      return args.map(arg => {
+        if (arg === null) return 'null';
+        if (arg === undefined) return 'undefined';
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg, null, 2);
+          } catch (e) {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      }).join(' ');
+    };
+
+    // Console.log override - HER ZAMAN AKTİF
     console.log = (...args: any[]) => {
       originalLog.apply(console, args);
-      const logMessage = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      addDebugLog(`[LOG] ${logMessage}`);
+      if (isListening) {
+        const logMessage = formatLogMessage(args);
+        addDebugLog(`[LOG] ${logMessage}`);
+      }
     };
 
-    // Console.error override
+    // Console.error override - HER ZAMAN AKTİF
     console.error = (...args: any[]) => {
       originalError.apply(console, args);
-      const logMessage = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      addDebugLog(`[ERROR] ${logMessage}`);
+      if (isListening) {
+        const logMessage = formatLogMessage(args);
+        addDebugLog(`[ERROR] ${logMessage}`);
+      }
     };
 
-    // Console.warn override
+    // Console.warn override - HER ZAMAN AKTİF
     console.warn = (...args: any[]) => {
       originalWarn.apply(console, args);
-      const logMessage = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      addDebugLog(`[WARN] ${logMessage}`);
+      if (isListening) {
+        const logMessage = formatLogMessage(args);
+        addDebugLog(`[WARN] ${logMessage}`);
+      }
     };
 
+    // Console.info override - HER ZAMAN AKTİF
+    console.info = (...args: any[]) => {
+      originalInfo.apply(console, args);
+      if (isListening) {
+        const logMessage = formatLogMessage(args);
+        addDebugLog(`[INFO] ${logMessage}`);
+      }
+    };
+
+    // Console.debug override - HER ZAMAN AKTİF
+    console.debug = (...args: any[]) => {
+      originalDebug.apply(console, args);
+      if (isListening) {
+        const logMessage = formatLogMessage(args);
+        addDebugLog(`[DEBUG] ${logMessage}`);
+      }
+    };
+
+    // Karaoke kapalıyken logları temizle
+    if (!isListening) {
+      debugLogsRef.current = [];
+    }
+
+    // Cleanup - component unmount olduğunda restore etme (diğer componentler de kullanabilir)
     return () => {
-      // Restore original console methods
-      console.log = originalLog;
-      console.error = originalError;
-      console.warn = originalWarn;
+      // Sadece karaoke kapalıyken restore etme, çünkü diğer componentler de console kullanıyor olabilir
+      // Restore işlemini component unmount'ta yapmıyoruz
     };
   }, [isListening, addDebugLog]);
 
@@ -331,6 +404,11 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
 
   // Kelime algılama callback'i - ANLIK İŞARETLEME (HER KELİME İÇİN GÜNCELLE)
   const handleWordDetected = useCallback((word: string, confidence: number): void => {
+    // Debug log ekle
+    if (isListening) {
+      addDebugLog(`[WORD DETECTED] Kelime: "${word}" | Confidence: ${confidence.toFixed(3)}`);
+    }
+    
     // Anında işle - gecikme yok
     const match = matcherRef.current.processWord(word, confidence);
     
@@ -338,6 +416,11 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     if (match) {
       const newPosition = matcherRef.current.currentPosition;
       const newAccuracy = Math.round(matcherRef.current.getAccuracy() * 100);
+      
+      // Debug log ekle
+      if (isListening) {
+        addDebugLog(`[MATCH] Eşleşme: "${match.detected}" -> "${match.original}" | Doğru: ${match.isCorrect} | Confidence: ${match.confidence.toFixed(3)} | Pozisyon: ${newPosition}`);
+      }
       
       // ANLIK İŞARETLEME - Her kelime için state'i güncelle
       // flushSync ile anında DOM güncellemesi - anlık görsel geri bildirim
@@ -478,6 +561,9 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
         }
       );
       console.log('✅ [PLAYER] Speech Recognition başlatıldı - Mikrofon aktif!');
+      
+      // Debug: Karaoke başladı
+      addDebugLog(`[KARAOKE START] Şarkı: ${songTitle} | Sanatçı: ${artist} | Kelime Sayısı: ${words.length}`);
       
       matcherRef.current.reset();
       setCurrentWordIndex(0);
