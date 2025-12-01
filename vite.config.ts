@@ -33,7 +33,19 @@ export default defineConfig({
     commonjsOptions: {
       include: [/sql.js/, /node_modules/]
     },
-    outDir: 'dist'
+    outDir: 'dist',
+    sourcemap: true, // Debug için
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vendor kodlarını ayır (bundle size optimizasyonu)
+          vendor: ['react', 'react-dom'],
+          motion: ['framer-motion'],
+          // Speech recognition ayrı chunk
+          speech: ['@tensorflow-models/speech-commands', '@tensorflow/tfjs']
+        }
+      }
+    }
   }
 })
 

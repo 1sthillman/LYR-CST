@@ -12,9 +12,20 @@ export interface AudioControlOptions {
 }
 
 export class AudioControlService {
+  private static instance: AudioControlService;
   private audioElement: HTMLAudioElement | null = null;
   private volumeLevel: number = 1.0;
   private isMuted: boolean = false;
+
+  // Singleton pattern
+  private constructor() {}
+
+  static getInstance(): AudioControlService {
+    if (!AudioControlService.instance) {
+      AudioControlService.instance = new AudioControlService();
+    }
+    return AudioControlService.instance;
+  }
 
   /**
    * Şarkı yükle ve ses seviyesini ayarla
@@ -248,4 +259,4 @@ export class AudioControlService {
   }
 }
 
-export const audioControlService = new AudioControlService();
+export const audioControlService = AudioControlService.getInstance();
