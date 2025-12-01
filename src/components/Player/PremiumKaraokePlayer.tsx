@@ -1372,7 +1372,7 @@ ${logs || '(Henüz log yok)'}
                   </p>
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
+                      whileHover={isMobile ? {} : { scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => {
                         setIsManualMode(true);
@@ -1380,12 +1380,13 @@ ${logs || '(Henüz log yok)'}
                         toast.success('👆 İşaretleme modu seçildi - Kelimelere dokunarak ilerleyeceksiniz', { duration: 3000 });
                       }}
                       className="flex-1 px-6 py-4 bg-blue-600/20 border-2 border-blue-500/50 rounded-xl hover:bg-blue-600/30 transition-all flex items-center justify-center gap-3"
+                      style={{ willChange: 'transform' }}
                     >
                       <Hand className="w-6 h-6 text-blue-400" />
                       <span className="font-semibold text-base sm:text-lg text-blue-400">İŞARETLEME</span>
                     </motion.button>
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
+                      whileHover={isMobile ? {} : { scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => {
                         setIsManualMode(false);
@@ -1393,6 +1394,7 @@ ${logs || '(Henüz log yok)'}
                         toast.success('🎤 Konuşarak modu seçildi - Mikrofon ile ilerleyeceksiniz', { duration: 3000 });
                       }}
                       className="flex-1 px-6 py-4 bg-purple-600/20 border-2 border-purple-500/50 rounded-xl hover:bg-purple-600/30 transition-all flex items-center justify-center gap-3"
+                      style={{ willChange: 'transform' }}
                     >
                       <MicOff className="w-6 h-6 text-purple-400" />
                       <span className="font-semibold text-base sm:text-lg text-purple-400">KONUŞARAK</span>
@@ -1443,7 +1445,7 @@ ${logs || '(Henüz log yok)'}
                   )}
                   
                   <motion.button
-                    whileHover={{ scale: 1.05, y: -5 }}
+                    whileHover={isMobile ? {} : { scale: 1.05, y: -5 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => {
                       handleReset();
