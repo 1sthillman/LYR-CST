@@ -557,6 +557,12 @@ export class SpeechRecognitionService {
           const bestAlternative = result[0];
           const transcript = bestAlternative.transcript.trim().toLowerCase();
           
+          // MEMORY LEAK ÖNLEME: Transcript geçmişini kaydet
+          this.transcripts.push(transcript);
+          if (this.transcripts.length > this.maxTranscriptLength) {
+            this.transcripts = this.transcripts.slice(-100); // Son 100'ü tut
+          }
+          
           // Confidence değeri - Web Speech API bazen vermeyebilir veya çok düşük verebilir
           let confidence = bestAlternative.confidence;
           
@@ -683,9 +689,9 @@ export class SpeechRecognitionService {
         this.processedWords.clear();
         this.lastProcessedIndex = -1;
         
-        // MEMORY LEAK ÖNLEME: Transcript geçmişini temizle
-        if (this.transcripts.length > 100) {
-          this.transcripts = this.transcripts.slice(-50);
+        // MEMORY LEAK ÖNLEME: Transcript geçmişini temizle (eğer çok fazla biriktiyse)
+        if (this.transcripts.length > this.maxTranscriptLength) {
+          this.transcripts = this.transcripts.slice(-100); // Son 100'ü tut
           console.log('🧹 [SPEECH] Transcript geçmişi temizlendi (memory leak önleme)');
         }
         
