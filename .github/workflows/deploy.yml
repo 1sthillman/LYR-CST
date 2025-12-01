@@ -47,6 +47,7 @@ jobs:
           echo "✅ Build completed"
         env:
           NODE_ENV: production
+          VITE_BASE_PATH: '/LYR-CST/'
 
       - name: Check build output
         run: |

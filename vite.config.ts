@@ -5,10 +5,10 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // Base path - Android için '/' (root)
-  // GitHub Pages için '/LYR-CST/' gerekli ama Android'de '/' olmalı
-  // Android build için base path '/' kullanılıyor
-  base: '/',
+  // Base path - Environment variable ile dinamik
+  // GitHub Pages için '/LYR-CST/' gerekli, Android/local için '/' olmalı
+  // GitHub Actions'da VITE_BASE_PATH='/LYR-CST/' set edilecek
+  base: process.env.VITE_BASE_PATH || '/',
   resolve: {
     alias: {
       '@components': path.resolve(__dirname, './src/components'),
