@@ -2,6 +2,7 @@ import React, { useCallback, useEffect } from 'react';
 import { List, useListRef } from 'react-window';
 import type { MatchResult } from '../../engine/UltimateLyricsMatcher';
 import { motion } from 'framer-motion';
+import { isMobileBrowser } from '../../utils/platform';
 
 interface Props {
   words: string[];
@@ -24,6 +25,7 @@ export const VirtualLyricsDisplay: React.FC<Props> = ({
   onWordClick,
 }) => {
   const listRef = useListRef();
+  const isMobile = isMobileBrowser();
 
   // Satır renderer (sadece görünen satırlar render edilir)
   const Row = useCallback(({ index, style }: { index: number; style: React.CSSProperties }) => {
@@ -44,11 +46,14 @@ export const VirtualLyricsDisplay: React.FC<Props> = ({
                 key={wordIndex}
                 data-index={wordIndex}
                 onClick={() => onWordClick?.(wordIndex)}
-                animate={isCurrent ? {
+                animate={isCurrent && !isMobile ? {
                   scale: [1, 1.15, 1],
                   textShadow: ['0 0 0px rgba(251, 191, 36, 0)', '0 0 20px rgba(251, 191, 36, 0.5)', '0 0 0px rgba(251, 191, 36, 0)'],
+                } : isCurrent && isMobile ? {
+                  scale: [1, 1.1, 1],
                 } : {}}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: isMobile ? 0.2 : 0.3, ease: 'easeOut' }}
+                style={{ willChange: isCurrent ? 'transform, opacity' : 'auto' }}
                 className={`
                   inline-block px-2 py-1 rounded-lg border transition-all duration-200 select-none
                   ${onWordClick ? 'cursor-pointer hover:bg-white/5' : ''}

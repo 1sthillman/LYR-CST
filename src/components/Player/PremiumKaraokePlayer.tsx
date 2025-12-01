@@ -11,7 +11,7 @@ import nativeSpeechRecognitionService from '../../services/NativeSpeechRecogniti
 import { dummyRecorderService } from '../../services/DummyRecorderService';
 import { audioContextService } from '../../services/AudioContextService';
 import { LyricsMatcher } from '../../engine/LyricsMatcher';
-import { isAndroid } from '../../utils/platform';
+import { isAndroid, isMobileBrowser } from '../../utils/platform';
 import { dbAdapter } from '../../database/DatabaseAdapter';
 import { VirtualLyricsDisplay } from './VirtualLyricsDisplay';
 import { lyricsCache } from '../../cache/LyricsCache';
@@ -54,10 +54,14 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
   const startTimeRef = useRef<number>(0);
   const [useVirtualDisplay, setUseVirtualDisplay] = useState<boolean>(false);
   
+  // Mobil tespiti - performans optimizasyonu için
+  const isMobile = isMobileBrowser();
+  
   // Mikrofon analizi için refs
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const lastWaveUpdateRef = useRef<number>(0); // Wave data throttling için
   
   // Matcher'a pozisyon değişikliği callback'i ayarla
   useEffect(() => {
@@ -418,17 +422,28 @@ ${logs || '(Henüz log yok)'}
       const bufferLength = analyser.frequencyBinCount; // 128 (fftSize / 2)
       const dataArray = new Uint8Array(bufferLength);
 
-      // Gerçek zamanlı analiz fonksiyonu
+      // Gerçek zamanlı analiz fonksiyonu - MOBİL İÇİN OPTİMİZE
       const analyze = () => {
         if (!isListening || !analyserRef.current) {
           return;
         }
 
+        const now = Date.now();
+        // Mobilde daha az sıklıkla güncelle (60fps -> 30fps)
+        const updateInterval = isMobile ? 33 : 16; // Mobil: 30fps, PC: 60fps
+        
+        if (now - lastWaveUpdateRef.current < updateInterval) {
+          animationFrameRef.current = requestAnimationFrame(analyze);
+          return;
+        }
+        
+        lastWaveUpdateRef.current = now;
+
         // Frekans verilerini al
         analyserRef.current.getByteFrequencyData(dataArray);
 
-        // 50 bar için verileri normalize et ve güncelle
-        const bars = 50;
+        // Mobilde daha az bar kullan (performans için)
+        const bars = isMobile ? 30 : 50;
         const step = Math.floor(bufferLength / bars);
         const newWaveData: number[] = [];
 
@@ -439,6 +454,13 @@ ${logs || '(Henüz log yok)'}
           const normalizedValue = (value / 255) * 100;
           // Minimum %5 yükseklik (görsel için)
           newWaveData.push(Math.max(normalizedValue, 5));
+        }
+
+        // Mobilde eksik bar'ları doldur (görsel tutarlılık için)
+        if (isMobile && newWaveData.length < 50) {
+          while (newWaveData.length < 50) {
+            newWaveData.push(5);
+          }
         }
 
         setWaveData(newWaveData);
@@ -476,58 +498,72 @@ ${logs || '(Henüz log yok)'}
     }
   }, [isListening]);
 
-  // Kelime Takibi ve Otomatik Scroll - UZUN ŞARKI SÖZLERİ İÇİN OPTİMİZE
+  // Scroll fonksiyonunu ayrı tanımla (re-render'ları önlemek için)
+  const scrollToCurrentWord = useCallback(() => {
+    if (!lyricsRef.current) return;
+    const element = lyricsRef.current.querySelector(`[data-index="${currentWordIndex}"]`);
+    if (element && lyricsRef.current) {
+      // Element'in pozisyonunu hesapla
+      const container = lyricsRef.current;
+      const elementRect = element.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      
+      // Element container'ın görünür alanında mı kontrol et
+      const isVisible = (
+        elementRect.top >= containerRect.top &&
+        elementRect.bottom <= containerRect.bottom
+      );
+
+      // Eğer görünür alanda değilse scroll yap
+      if (!isVisible) {
+        // Element'i container'ın ortasına getir
+        const elementOffsetTop = (element as HTMLElement).offsetTop;
+        const containerHeight = container.clientHeight;
+        const elementHeight = elementRect.height;
+        
+        // Ortalama scroll pozisyonu hesapla
+        const targetScrollTop = elementOffsetTop - (containerHeight / 2) + (elementHeight / 2);
+        
+        // Mobilde instant scroll (performans için), PC'de smooth
+        container.scrollTo({
+          top: targetScrollTop,
+          behavior: isMobile ? 'auto' : 'smooth'
+        });
+      } else {
+        // Görünür alandaysa, sadece hafif ayarlama yap (mikro-optimizasyon)
+        const margin = 50; // 50px margin
+        if (elementRect.top < containerRect.top + margin) {
+          container.scrollBy({
+            top: elementRect.top - containerRect.top - margin,
+            behavior: isMobile ? 'auto' : 'smooth'
+          });
+        } else if (elementRect.bottom > containerRect.bottom - margin) {
+          container.scrollBy({
+            top: elementRect.bottom - containerRect.bottom + margin,
+            behavior: isMobile ? 'auto' : 'smooth'
+          });
+        }
+      }
+    }
+  }, [currentWordIndex, isMobile]);
+
+  // Kelime Takibi ve Otomatik Scroll - UZUN ŞARKI SÖZLERİ İÇİN OPTİMİZE - MOBİL İÇİN OPTİMİZE
   useEffect(() => {
     if (lyricsRef.current && currentWordIndex >= 0) {
+      // Mobilde scroll'u throttle et (performans için)
+      if (isMobile) {
+        const scrollTimeout = setTimeout(() => {
+          scrollToCurrentWord();
+        }, 100); // Mobilde 100ms throttle
+        return () => clearTimeout(scrollTimeout);
+      }
+      
       // Scroll işlemini requestAnimationFrame ile optimize et
       requestAnimationFrame(() => {
-        const element = lyricsRef.current?.querySelector(`[data-index="${currentWordIndex}"]`);
-        if (element && lyricsRef.current) {
-          // Element'in pozisyonunu hesapla
-          const container = lyricsRef.current;
-          const elementRect = element.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
-          
-          // Element container'ın görünür alanında mı kontrol et
-          const isVisible = (
-            elementRect.top >= containerRect.top &&
-            elementRect.bottom <= containerRect.bottom
-          );
-
-          // Eğer görünür alanda değilse scroll yap
-          if (!isVisible) {
-            // Element'i container'ın ortasına getir
-            const elementOffsetTop = (element as HTMLElement).offsetTop;
-            const containerHeight = container.clientHeight;
-            const elementHeight = elementRect.height;
-            
-            // Ortalama scroll pozisyonu hesapla
-            const targetScrollTop = elementOffsetTop - (containerHeight / 2) + (elementHeight / 2);
-            
-            // Smooth scroll
-            container.scrollTo({
-              top: targetScrollTop,
-              behavior: 'smooth'
-            });
-          } else {
-            // Görünür alandaysa, sadece hafif ayarlama yap (mikro-optimizasyon)
-            const margin = 50; // 50px margin
-            if (elementRect.top < containerRect.top + margin) {
-              container.scrollBy({
-                top: elementRect.top - containerRect.top - margin,
-                behavior: 'smooth'
-              });
-            } else if (elementRect.bottom > containerRect.bottom - margin) {
-              container.scrollBy({
-                top: elementRect.bottom - containerRect.bottom + margin,
-                behavior: 'smooth'
-              });
-            }
-          }
-        }
+        scrollToCurrentWord();
       });
     }
-  }, [currentWordIndex]);
+  }, [currentWordIndex, isMobile, scrollToCurrentWord]);
 
   // Kelime algılama callback'i - ANLIK İŞARETLEME (HER KELİME İÇİN GÜNCELLE)
   const handleWordDetected = useCallback((word: string, confidence: number): void => {
@@ -1054,7 +1090,9 @@ ${logs || '(Henüz log yok)'}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="relative bg-gray-900/60 backdrop-blur-2xl border border-white/10 rounded-2xl sm:rounded-3xl m-2 sm:m-4 overflow-hidden"
+        transition={{ duration: isMobile ? 0.2 : 0.3 }}
+        className={`relative bg-gray-900/60 ${isMobile ? 'backdrop-blur-sm' : 'backdrop-blur-2xl'} border border-white/10 rounded-2xl sm:rounded-3xl m-2 sm:m-4 overflow-hidden`}
+        style={{ willChange: 'opacity' }}
       >
         {/* Üst Bilgi Barı */}
         <div className="relative p-3 sm:p-4 md:p-6 border-b border-white/10">
@@ -1062,15 +1100,19 @@ ${logs || '(Henüz log yok)'}
             <div className="flex-1 min-w-0">
               <motion.h2 
                 className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent truncate"
-                initial={{ x: -20, opacity: 0 }}
+                initial={isMobile ? { opacity: 0 } : { x: -20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
+                transition={{ duration: isMobile ? 0.2 : 0.3 }}
+                style={{ willChange: isMobile ? 'opacity' : 'transform, opacity' }}
               >
                 {songTitle}
               </motion.h2>
               <motion.p 
                 className="text-sm sm:text-base text-gray-400 truncate"
-                initial={{ x: -20, opacity: 0 }}
-                animate={{ x: 0, opacity: 1, transition: { delay: 0.1 } }}
+                initial={isMobile ? { opacity: 0 } : { x: -20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: isMobile ? 0 : 0.1, duration: isMobile ? 0.2 : 0.3 }}
+                style={{ willChange: isMobile ? 'opacity' : 'transform, opacity' }}
               >
                 {artist}
               </motion.p>
@@ -1080,10 +1122,11 @@ ${logs || '(Henüz log yok)'}
               {/* Müzik Kontrol Paneli Toggle */}
               {audioFilePath && (
                 <motion.button
-                  whileHover={{ scale: 1.1 }}
+                  whileHover={isMobile ? {} : { scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setShowAudioPanel(!showAudioPanel)}
                   className="p-2 sm:p-3 bg-white/5 rounded-xl border border-white/10 relative"
+                  style={{ willChange: 'transform' }}
                 >
                   <Volume2 className={`w-4 h-4 sm:w-5 sm:h-5 ${showAudioPanel ? 'text-purple-400' : 'text-gray-400'}`} />
                   {showAudioPanel && (
@@ -1097,19 +1140,21 @@ ${logs || '(Henüz log yok)'}
               
               {/* Favori */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
+                whileHover={isMobile ? {} : { scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setFavorites(!favorites)}
                 className="p-2 sm:p-3 bg-white/5 rounded-xl border border-white/10"
+                style={{ willChange: 'transform' }}
               >
                 <Heart className={`w-4 h-4 sm:w-5 sm:h-5 ${favorites ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
               </motion.button>
               
               {/* Paylaş */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
+                whileHover={isMobile ? {} : { scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 className="p-2 sm:p-3 bg-white/5 rounded-xl border border-white/10"
+                style={{ willChange: 'transform' }}
               >
                 <Share2 className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
               </motion.button>
@@ -1117,18 +1162,21 @@ ${logs || '(Henüz log yok)'}
               {/* Debug/Hata Ayıklama */}
               {isListening && (
                 <motion.button
-                  whileHover={{ scale: 1.1 }}
+                  whileHover={isMobile ? {} : { scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={copyDebugLogs}
                   className="p-2 sm:p-3 bg-white/5 rounded-xl border border-white/10 relative"
                   title="Debug loglarını kopyala"
+                  style={{ willChange: 'transform' }}
                 >
                   <Bug className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
                   {debugLogsRef.current.length > 0 && (
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
+                      transition={{ duration: 0.2 }}
                       className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-900"
+                      style={{ willChange: 'transform' }}
                     />
                   )}
                 </motion.button>
@@ -1136,10 +1184,11 @@ ${logs || '(Henüz log yok)'}
               
               {/* Ayarlar */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
+                whileHover={isMobile ? {} : { scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setShowSettings(!showSettings)}
                 className="p-2 sm:p-3 bg-white/5 rounded-xl border border-white/10"
+                style={{ willChange: 'transform' }}
               >
                 <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
               </motion.button>
@@ -1163,13 +1212,16 @@ ${logs || '(Henüz log yok)'}
           {/* Sol Panel - İstatistikler */}
           <motion.div 
             className="lg:col-span-1 space-y-3 sm:space-y-4 order-2 lg:order-1"
-            initial={{ x: -50, opacity: 0 }}
-            animate={{ x: 0, opacity: 1, transition: { delay: 0.2 } }}
+            initial={isMobile ? { opacity: 0 } : { x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: isMobile ? 0 : 0.2, duration: isMobile ? 0.2 : 0.3 }}
+            style={{ willChange: isMobile ? 'opacity' : 'transform, opacity' }}
           >
             {/* Accuracy Kartı */}
             <motion.div
-              whileHover={{ scale: 1.02 }}
-              className="relative bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-green-500/30 overflow-hidden"
+              whileHover={isMobile ? {} : { scale: 1.02 }}
+              className={`relative bg-gradient-to-br from-green-500/20 to-emerald-500/20 ${isMobile ? 'backdrop-blur-sm' : 'backdrop-blur'} rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-green-500/30 overflow-hidden`}
+              style={{ willChange: 'transform' }}
             >
               <div className="absolute top-0 right-0 w-24 sm:w-32 h-24 sm:h-32 bg-green-500/20 rounded-full blur-2xl" />
               <div className="relative flex items-center justify-between">
@@ -1183,8 +1235,9 @@ ${logs || '(Henüz log yok)'}
 
             {/* Progress Kartı */}
             <motion.div
-              whileHover={{ scale: 1.02 }}
-              className="relative bg-gradient-to-br from-purple-500/20 to-pink-500/20 backdrop-blur rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-purple-500/30 overflow-hidden"
+              whileHover={isMobile ? {} : { scale: 1.02 }}
+              className={`relative bg-gradient-to-br from-purple-500/20 to-pink-500/20 ${isMobile ? 'backdrop-blur-sm' : 'backdrop-blur'} rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-purple-500/30 overflow-hidden`}
+              style={{ willChange: 'transform' }}
             >
               <div className="absolute top-0 right-0 w-24 sm:w-32 h-24 sm:h-32 bg-purple-500/20 rounded-full blur-2xl" />
               <div className="relative">
@@ -1194,7 +1247,8 @@ ${logs || '(Henüz log yok)'}
                   <motion.div
                     className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
                     animate={{ width: `${(currentWordIndex / words.length) * 100}%` }}
-                    transition={{ type: 'spring', stiffness: 100 }}
+                    transition={{ type: isMobile ? 'tween' : 'spring', stiffness: isMobile ? undefined : 100, duration: isMobile ? 0.2 : undefined }}
+                    style={{ willChange: 'width' }}
                   />
                 </div>
               </div>
@@ -1202,7 +1256,7 @@ ${logs || '(Henüz log yok)'}
 
             {/* Ses Seviyesi */}
             {isListening && (
-              <div className="bg-white/5 backdrop-blur rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-white/10">
+              <div className={`bg-white/5 ${isMobile ? 'backdrop-blur-sm' : 'backdrop-blur'} rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-white/10`}>
                 <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
                   <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                   <span className="text-xs sm:text-sm font-semibold text-white">MİKROFON SEVİYESİ</span>
@@ -1212,9 +1266,9 @@ ${logs || '(Henüz log yok)'}
                     <motion.div
                       key={i}
                       animate={{ height: `${height}%` }}
-                      transition={{ duration: 0.1 }}
+                      transition={{ duration: isMobile ? 0.15 : 0.1, ease: 'easeOut' }}
                       className="absolute bottom-0 w-0.5 sm:w-1 bg-gradient-to-t from-purple-500 to-pink-500 rounded-t-full"
-                      style={{ left: `${i * 2}%` }}
+                      style={{ left: `${i * 2}%`, willChange: 'height' }}
                     />
                   ))}
                 </div>
@@ -1228,8 +1282,9 @@ ${logs || '(Henüz log yok)'}
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ type: 'spring', stiffness: 100 }}
+                  transition={{ type: isMobile ? 'tween' : 'spring', stiffness: isMobile ? undefined : 100, duration: isMobile ? 0.2 : undefined }}
                   className="overflow-hidden"
+                  style={{ willChange: 'height, opacity' }}
                 >
                   <AudioControlPanel songFilePath={audioFilePath} />
                 </motion.div>
@@ -1240,10 +1295,12 @@ ${logs || '(Henüz log yok)'}
           {/* Orta Panel - Şarkı Sözleri */}
           <motion.div 
             className="lg:col-span-2 order-1 lg:order-2"
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1, transition: { delay: 0.3 } }}
+            initial={isMobile ? { opacity: 0 } : { scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: isMobile ? 0 : 0.3, duration: isMobile ? 0.2 : 0.3 }}
+            style={{ willChange: isMobile ? 'opacity' : 'transform, opacity' }}
           >
-            <div className="relative bg-gray-800/50 backdrop-blur rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 border border-white/10 h-64 sm:h-80 md:h-96 overflow-hidden">
+            <div className={`relative bg-gray-800/50 ${isMobile ? 'backdrop-blur-sm' : 'backdrop-blur'} rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 border border-white/10 h-64 sm:h-80 md:h-96 overflow-hidden`}>
               {/* Gradient Overlay */}
               <div className="absolute inset-0 bg-gradient-to-b from-gray-900/0 via-gray-900/20 to-gray-900/80 pointer-events-none z-10" />
               
@@ -1280,11 +1337,14 @@ ${logs || '(Henüz log yok)'}
                           key={`${word}-${index}`}
                           data-index={index}
                           onClick={() => handleWordClick(index)}
-                          animate={isActive ? {
+                          animate={isActive && !isMobile ? {
                             scale: [1, 1.15, 1],
                             textShadow: ['0 0 0px rgba(251, 191, 36, 0)', '0 0 20px rgba(251, 191, 36, 1)', '0 0 0px rgba(251, 191, 36, 0)'],
+                          } : isActive && isMobile ? {
+                            scale: [1, 1.1, 1], // Mobilde daha küçük scale
                           } : {}}
-                          transition={{ duration: 0.3 }}
+                          transition={{ duration: isMobile ? 0.2 : 0.3, ease: 'easeOut' }}
+                          style={{ willChange: isActive ? 'transform, opacity' : 'auto' }}
                           className={`inline-block mr-1 sm:mr-2 mb-1 sm:mb-2 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg border transition-all duration-200 ${getWordStyle(index)} ${isManualMode && isListening ? 'cursor-pointer hover:bg-white/10 hover:scale-105 active:scale-95' : ''}`}
                         >
                           {word}
@@ -1303,7 +1363,9 @@ ${logs || '(Henüz log yok)'}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: isMobile ? 0.2 : 0.3 }}
                   className="flex flex-col gap-3"
+                  style={{ willChange: 'transform, opacity' }}
                 >
                   <p className="text-center text-sm sm:text-base text-gray-300 mb-2">
                     Nasıl ilerlemek istersiniz?
@@ -1344,11 +1406,12 @@ ${logs || '(Henüz log yok)'}
                 <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-3 sm:gap-4">
                   {!isListening ? (
                     <motion.button
-                      whileHover={{ scale: 1.05, y: -5 }}
+                      whileHover={isMobile ? {} : { scale: 1.05, y: -5 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={startKaraoke}
                       disabled={isLoading}
                       className="relative w-full sm:w-auto px-8 sm:px-10 md:px-12 py-3 sm:py-3.5 md:py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl sm:rounded-3xl font-bold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 shadow-2xl shadow-purple-600/40 hover:shadow-purple-600/60 transition-all disabled:opacity-50"
+                      style={{ willChange: 'transform' }}
                     >
                       {isLoading ? (
                         <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1360,17 +1423,18 @@ ${logs || '(Henüz log yok)'}
                       {!isLoading && (
                         <motion.div
                           animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-                          transition={{ duration: 1.5, repeat: Infinity }}
+                          transition={{ duration: isMobile ? 2 : 1.5, repeat: Infinity }}
                           className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl sm:rounded-3xl"
-                          style={{ zIndex: -1 }}
+                          style={{ zIndex: -1, willChange: 'transform, opacity' }}
                         />
                       )}
                     </motion.button>
                   ) : (
                     <motion.button
-                      whileHover={{ scale: 1.05, y: -5 }}
+                      whileHover={isMobile ? {} : { scale: 1.05, y: -5 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={stopKaraoke}
+                      style={{ willChange: 'transform' }}
                       className="relative w-full sm:w-auto px-8 sm:px-10 md:px-12 py-3 sm:py-3.5 md:py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-2xl sm:rounded-3xl font-bold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 shadow-2xl shadow-red-600/40"
                     >
                       <MicOff className="w-5 h-5 sm:w-6 sm:h-6" />
