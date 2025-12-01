@@ -1313,17 +1313,18 @@ ${logs || '(Henüz log yok)'}
                   <VirtualLyricsDisplay
                     words={words}
                     currentIndex={currentWordIndex}
-                    matchedWords={matcherRef.current.matchedWordsList.map((m, i) => 
-                      m ? {
-                        original: m.original,
-                        detected: m.detected,
-                        confidence: m.confidence,
-                        isCorrect: m.isCorrect,
-                        isSkipped: false,
-                        timestamp: m.timestamp,
-                        index: i
-                      } : null
-                    )}
+                    matchedWords={useMemo(() => 
+                      matcherRef.current.matchedWordsList.map((m, i) => 
+                        m ? {
+                          original: m.original,
+                          detected: m.detected,
+                          confidence: m.confidence,
+                          isCorrect: m.isCorrect,
+                          isSkipped: false,
+                          timestamp: m.timestamp,
+                          index: i
+                        } : null
+                      ), [currentWordIndex])}
                     onWordClick={isManualMode && isListening ? handleWordClick : undefined}
                   />
                 </div>
