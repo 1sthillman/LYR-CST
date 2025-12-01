@@ -778,21 +778,4 @@ public class MainActivity extends BridgeActivity {
         }
     }
     
-    /**
-     * İzin sonucunu işle
-     */
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // İzin verildi - WebView'ı yenile
-                WebView webView = getBridge().getWebView();
-                if (webView != null) {
-                    webView.reload();
-                }
-            }
-        }
-    }
 }
