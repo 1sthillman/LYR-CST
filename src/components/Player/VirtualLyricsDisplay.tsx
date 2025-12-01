@@ -77,13 +77,46 @@ export const VirtualLyricsDisplay: React.FC<Props> = ({
     );
   }, [words, currentIndex, matchedWords, onWordClick]);
 
-  // Otomatik scroll - mevcut kelimeyi ortala
+  // Otomatik scroll - mevcut kelimeyi ortala - SMOOTH VE YUMUŞAK
   useEffect(() => {
     const rowIndex = Math.floor(currentIndex / WORDS_PER_ROW);
     if (listRef.current) {
-      // scrollToOffset kullan
+      // scrollToOffset kullan - smooth scroll için custom animasyon
       const targetOffset = rowIndex * ROW_HEIGHT - 300; // Ortala (600/2 = 300)
-      (listRef.current as any).scrollToOffset(Math.max(0, targetOffset));
+      const finalOffset = Math.max(0, targetOffset);
+      
+      // Smooth scroll için custom animasyon (react-window smooth scroll desteklemiyor)
+      const listElement = (listRef.current as any)?._outerRef || (listRef.current as any)?.parentElement;
+      if (listElement) {
+        const start = listElement.scrollTop;
+        const distance = finalOffset - start;
+        const duration = 600; // 600ms smooth scroll
+        const startTime = performance.now();
+        
+        const easeInOutCubic = (t: number): number => {
+          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        };
+        
+        const animateScroll = (currentTime: number) => {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = easeInOutCubic(progress);
+          
+          listElement.scrollTop = start + distance * eased;
+          
+          if (progress < 1) {
+            requestAnimationFrame(animateScroll);
+          } else {
+            // Animasyon bittiğinde react-window'u güncelle
+            (listRef.current as any).scrollToOffset(finalOffset);
+          }
+        };
+        
+        requestAnimationFrame(animateScroll);
+      } else {
+        // Fallback: normal scroll
+        (listRef.current as any).scrollToOffset(finalOffset);
+      }
     }
   }, [currentIndex]);
 

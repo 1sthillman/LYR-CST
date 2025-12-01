@@ -63,10 +63,11 @@ body {
     animation-duration: 0.15s !important;
   }
   
-  /* Smooth scroll'u devre dışı bırak (performans için) */
-  * {
+  /* Smooth scroll'u sadece belirli elementler için devre dışı bırak */
+  /* Lyrics container için smooth scroll aktif kalacak */
+  /* * {
     scroll-behavior: auto !important;
-  }
+  } */
   
   /* Transform optimizasyonu */
   .transform,
@@ -76,11 +77,15 @@ body {
   }
 }
 
-/* Scroll optimizasyonu */
+/* Scroll optimizasyonu - SMOOTH VE YUMUŞAK */
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   -webkit-overflow-scrolling: touch; /* iOS smooth scroll */
+  scroll-behavior: smooth; /* Smooth scroll aktif */
+  /* GPU acceleration için */
+  transform: translateZ(0);
+  will-change: scroll-position;
 }
 
 .custom-scrollbar::-webkit-scrollbar {

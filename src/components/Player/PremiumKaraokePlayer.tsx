@@ -501,7 +501,32 @@ ${logs || '(Henüz log yok)'}
     }
   }, [isListening]);
 
-  // Scroll fonksiyonunu ayrı tanımla (re-render'ları önlemek için)
+  // Smooth scroll animasyonu için custom easing function
+  const smoothScrollTo = useCallback((element: HTMLElement, target: number, duration: number = 600) => {
+    const start = element.scrollTop;
+    const distance = target - start;
+    const startTime = performance.now();
+
+    const easeInOutCubic = (t: number): number => {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    };
+
+    const animateScroll = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeInOutCubic(progress);
+      
+      element.scrollTop = start + distance * eased;
+      
+      if (progress < 1) {
+        requestAnimationFrame(animateScroll);
+      }
+    };
+
+    requestAnimationFrame(animateScroll);
+  }, []);
+
+  // Scroll fonksiyonunu ayrı tanımla (re-render'ları önlemek için) - SMOOTH VE YUMUŞAK
   const scrollToCurrentWord = useCallback(() => {
     if (!lyricsRef.current) return;
     const element = lyricsRef.current.querySelector(`[data-index="${currentWordIndex}"]`);
@@ -511,10 +536,11 @@ ${logs || '(Henüz log yok)'}
       const elementRect = element.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       
-      // Element container'ın görünür alanında mı kontrol et
+      // Element container'ın görünür alanında mı kontrol et (daha geniş margin)
+      const margin = 80; // Daha geniş margin - daha erken scroll
       const isVisible = (
-        elementRect.top >= containerRect.top &&
-        elementRect.bottom <= containerRect.bottom
+        elementRect.top >= containerRect.top - margin &&
+        elementRect.bottom <= containerRect.bottom + margin
       );
 
       // Eğer görünür alanda değilse scroll yap
@@ -524,47 +550,53 @@ ${logs || '(Henüz log yok)'}
         const containerHeight = container.clientHeight;
         const elementHeight = elementRect.height;
         
-        // Ortalama scroll pozisyonu hesapla
-        const targetScrollTop = elementOffsetTop - (containerHeight / 2) + (elementHeight / 2);
+        // Ortalama scroll pozisyonu hesapla (biraz yukarıda - daha iyi görünüm)
+        const targetScrollTop = elementOffsetTop - (containerHeight / 2) + (elementHeight / 2) - 30;
         
-        // Mobilde instant scroll (performans için), PC'de smooth
-        container.scrollTo({
-          top: targetScrollTop,
-          behavior: isMobile ? 'auto' : 'smooth'
-        });
+        // SMOOTH SCROLL - Hem mobilde hem PC'de smooth (custom animasyon ile)
+        if (isMobile) {
+          // Mobilde daha kısa süre (performans için) ama yine de smooth
+          smoothScrollTo(container, targetScrollTop, 400);
+        } else {
+          // PC'de daha uzun süre - çok yumuşak
+          smoothScrollTo(container, targetScrollTop, 700);
+        }
       } else {
-        // Görünür alandaysa, sadece hafif ayarlama yap (mikro-optimizasyon)
-        const margin = 50; // 50px margin
+        // Görünür alandaysa, sadece hafif ayarlama yap (mikro-optimizasyon) - SMOOTH
+        const margin = 60; // 60px margin
         if (elementRect.top < containerRect.top + margin) {
-          container.scrollBy({
-            top: elementRect.top - containerRect.top - margin,
-            behavior: isMobile ? 'auto' : 'smooth'
-          });
+          const targetScroll = container.scrollTop + (elementRect.top - containerRect.top - margin);
+          if (isMobile) {
+            smoothScrollTo(container, targetScroll, 300);
+          } else {
+            smoothScrollTo(container, targetScroll, 500);
+          }
         } else if (elementRect.bottom > containerRect.bottom - margin) {
-          container.scrollBy({
-            top: elementRect.bottom - containerRect.bottom + margin,
-            behavior: isMobile ? 'auto' : 'smooth'
-          });
+          const targetScroll = container.scrollTop + (elementRect.bottom - containerRect.bottom + margin);
+          if (isMobile) {
+            smoothScrollTo(container, targetScroll, 300);
+          } else {
+            smoothScrollTo(container, targetScroll, 500);
+          }
         }
       }
     }
-  }, [currentWordIndex, isMobile]);
+  }, [currentWordIndex, isMobile, smoothScrollTo]);
 
-  // Kelime Takibi ve Otomatik Scroll - UZUN ŞARKI SÖZLERİ İÇİN OPTİMİZE - MOBİL İÇİN OPTİMİZE
+  // Kelime Takibi ve Otomatik Scroll - SMOOTH VE YUMUŞAK - MOBİL İÇİN OPTİMİZE
   useEffect(() => {
     if (lyricsRef.current && currentWordIndex >= 0) {
-      // Mobilde scroll'u throttle et (performans için)
-      if (isMobile) {
-        const scrollTimeout = setTimeout(() => {
-          scrollToCurrentWord();
-        }, 100); // Mobilde 100ms throttle
-        return () => clearTimeout(scrollTimeout);
-      }
+      // Scroll işlemini requestAnimationFrame ile optimize et - SMOOTH SCROLL
+      // Mobilde biraz throttle (performans için) ama yine de smooth
+      const delay = isMobile ? 50 : 0; // Mobilde 50ms, PC'de anında
       
-      // Scroll işlemini requestAnimationFrame ile optimize et
-      requestAnimationFrame(() => {
-        scrollToCurrentWord();
-      });
+      const scrollTimeout = setTimeout(() => {
+        requestAnimationFrame(() => {
+          scrollToCurrentWord();
+        });
+      }, delay);
+      
+      return () => clearTimeout(scrollTimeout);
     }
   }, [currentWordIndex, isMobile, scrollToCurrentWord]);
 
@@ -1332,6 +1364,10 @@ ${logs || '(Henüz log yok)'}
                 <div 
                   ref={lyricsRef}
                   className="relative h-full overflow-y-auto custom-scrollbar pr-2 sm:pr-4 z-20"
+                  style={{ 
+                    scrollBehavior: 'smooth',
+                    WebkitOverflowScrolling: 'touch' // iOS smooth scroll
+                  }}
                 >
                   <div className="text-lg sm:text-xl md:text-2xl lg:text-3xl leading-relaxed sm:leading-relaxed font-medium">
                     {words.map((word: string, index: number) => {
