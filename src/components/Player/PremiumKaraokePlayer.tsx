@@ -1279,7 +1279,7 @@ ${logs || '(Henüz log yok)'}
                             textShadow: ['0 0 0px rgba(251, 191, 36, 0)', '0 0 20px rgba(251, 191, 36, 1)', '0 0 0px rgba(251, 191, 36, 0)'],
                           } : {}}
                           transition={{ duration: 0.3 }}
-                          className={`inline-block mr-1 sm:mr-2 mb-1 sm:mb-2 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg border transition-all duration-200 ${getWordStyle(index)} ${isManualMode && isListening && (index === currentWordIndex + 1 || index < currentWordIndex) ? 'cursor-pointer hover:bg-white/10 hover:scale-105 active:scale-95' : ''}`}
+                          className={`inline-block mr-1 sm:mr-2 mb-1 sm:mb-2 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg border transition-all duration-200 ${getWordStyle(index)} ${isManualMode && isListening ? 'cursor-pointer hover:bg-white/10 hover:scale-105 active:scale-95' : ''}`}
                         >
                           {word}
                         </motion.span>
