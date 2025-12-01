@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -193,7 +193,10 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     };
   }, [addDebugLog]);
 
-  const words: string[] = lyrics.split(/\s+/).filter((w: string) => w.trim());
+  // Words array'ini memoize et - her render'da yeniden oluşturulmasını önle (PERFORMANS)
+  const words: string[] = useMemo(() => {
+    return lyrics.split(/\s+/).filter((w: string) => w.trim());
+  }, [lyrics]);
 
   // Debug loglarını kopyala
   const copyDebugLogs = useCallback(async () => {
