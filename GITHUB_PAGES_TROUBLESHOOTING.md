@@ -86,3 +86,4 @@ Deploy başarılı olduktan sonra:
 
 **Not**: İlk deploy genellikle 5-10 dakika sürebilir. Sabırlı olun! ⏳
 
+

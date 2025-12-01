@@ -89,3 +89,4 @@ Loglarda şunları arayın:
 
 **Önemli**: Logları gönderirken **tam logları** gönderin, filtreleme yapmayın. Tüm `[DUMMY]`, `[SPEECH]`, `[PLAYER]` logları önemli!
 
+

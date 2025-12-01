@@ -237,6 +237,24 @@ export class SpeechRecognitionService {
       
       // onresult event'inin ayarlandığını doğrula
       console.log('✅ [SPEECH] onresult handler ayarlandı:', !!recognition.onresult);
+      
+      // Android WebView'de Web Speech API çalışmıyorsa timeout kontrolü
+      let resultReceived = false;
+      const originalOnResult = recognition.onresult;
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        resultReceived = true;
+        if (originalOnResult) {
+          originalOnResult.call(recognition, event);
+        }
+      };
+      
+      // 5 saniye içinde sonuç gelmezse hata fırlat (Android WebView'de Web Speech API çalışmıyor)
+      setTimeout(() => {
+        if (!resultReceived && isMobile) {
+          console.error('❌ [SPEECH] Android WebView\'de Web Speech API sonuç döndürmüyor - Native Speech Recognition kullanılmalı');
+          throw new Error('Web Speech API çalışmıyor - Native Speech Recognition kullanılacak');
+        }
+      }, 5000);
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.log('⚠️ [SPEECH] onerror event:', event.error, '| State:', (recognition as any).state);

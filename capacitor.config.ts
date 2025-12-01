@@ -6,8 +6,8 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
-    // GitHub Pages URL'ini WebView'da göster
-    url: 'https://1sthillman.github.io/LYR-CST/',
+    // LOCAL BUILD KULLAN - GitHub Pages yerine local dist klasörünü kullan
+    // url: 'https://1sthillman.github.io/LYR-CST/', // COMMENT OUT - Local build kullan
     cleartext: false, // HTTPS kullan
   },
   // Android izinleri - kesintisiz dinleme için (dummy.md)

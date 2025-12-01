@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MicOff, RotateCcw, Settings, 
   Volume2, Heart, Share2, X,
-  Target, Zap, Bug
+  Target, Zap, Bug, Hand
 } from 'lucide-react';
 import speechRecognitionService from '../../services/SpeechRecognitionService';
 import nativeSpeechRecognitionService from '../../services/NativeSpeechRecognitionService';
@@ -42,6 +42,8 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [showAudioPanel, setShowAudioPanel] = useState<boolean>(false);
+  const [isManualMode, setIsManualMode] = useState<boolean>(false);
+  const [modeSelected, setModeSelected] = useState<boolean>(false); // Mod seçildi mi?
   
   // Debug logları için
   const debugLogsRef = useRef<string[]>([]);
@@ -81,6 +83,12 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
     // Maksimum log sayısını aşarsa eski logları sil
     if (debugLogsRef.current.length > maxDebugLogs) {
       debugLogsRef.current = debugLogsRef.current.slice(-maxDebugLogs);
+    }
+    
+    // KRİTİK: Native Speech Recognition loglarını HER ZAMAN console'a da yaz (karaoke başlamadan önce de)
+    if (message.includes('[NATIVE SPEECH]') || message.includes('[PLAYER]') || message.includes('[SPEECH]')) {
+      const originalLog = (window as any).__originalConsoleLog || console.log;
+      originalLog(logEntry);
     }
   }, []);
 
@@ -308,29 +316,32 @@ ${logs || '(Henüz log yok)'}
       }).join(' ');
     };
 
-    // Console.log override - HER ZAMAN AKTİF
+    // Console.log override - HER ZAMAN AKTİF (karaoke başlamadan önce de logla)
     console.log = (...args: any[]) => {
       originalLog.apply(console, args);
-      if (isListening) {
-        const logMessage = formatLogMessage(args);
+      const logMessage = formatLogMessage(args);
+      // KRİTİK: Native Speech Recognition loglarını HER ZAMAN ekle (karaoke başlamadan önce de)
+      if (logMessage.includes('[NATIVE SPEECH]') || logMessage.includes('[PLAYER]') || logMessage.includes('[SPEECH]') || logMessage.includes('[MATCHER]') || isListening) {
         addDebugLog(`[LOG] ${logMessage}`);
       }
     };
 
-    // Console.error override - HER ZAMAN AKTİF
+    // Console.error override - HER ZAMAN AKTİF (karaoke başlamadan önce de logla)
     console.error = (...args: any[]) => {
       originalError.apply(console, args);
-      if (isListening) {
-        const logMessage = formatLogMessage(args);
+      const logMessage = formatLogMessage(args);
+      // KRİTİK: Native Speech Recognition hatalarını HER ZAMAN ekle
+      if (logMessage.includes('[NATIVE SPEECH]') || logMessage.includes('[PLAYER]') || logMessage.includes('[SPEECH]') || logMessage.includes('[MATCHER]') || isListening) {
         addDebugLog(`[ERROR] ${logMessage}`);
       }
     };
 
-    // Console.warn override - HER ZAMAN AKTİF
+    // Console.warn override - HER ZAMAN AKTİF (karaoke başlamadan önce de logla)
     console.warn = (...args: any[]) => {
       originalWarn.apply(console, args);
-      if (isListening) {
-        const logMessage = formatLogMessage(args);
+      const logMessage = formatLogMessage(args);
+      // KRİTİK: Native Speech Recognition uyarılarını HER ZAMAN ekle
+      if (logMessage.includes('[NATIVE SPEECH]') || logMessage.includes('[PLAYER]') || logMessage.includes('[SPEECH]') || logMessage.includes('[MATCHER]') || isListening) {
         addDebugLog(`[WARN] ${logMessage}`);
       }
     };
@@ -520,6 +531,11 @@ ${logs || '(Henüz log yok)'}
 
   // Kelime algılama callback'i - ANLIK İŞARETLEME (HER KELİME İÇİN GÜNCELLE)
   const handleWordDetected = useCallback((word: string, confidence: number): void => {
+    // Manuel modda mikrofon dinlemesi çalışmamalı
+    if (isManualMode) {
+      return;
+    }
+    
     // Debug log ekle
     if (isListening) {
       addDebugLog(`[WORD DETECTED] Kelime: "${word}" | Confidence: ${confidence.toFixed(3)}`);
@@ -562,116 +578,120 @@ ${logs || '(Henüz log yok)'}
       setIsLoading(true);
       setError(null);
       
-      // 1. Mikrofon izni kontrolü - MOBİL TARAYICI İÇİN ÖZEL YÖNTEM
-      console.log('🎤 [PLAYER] Mikrofon izni isteniyor...');
-      
-      // MOBİL TARAYICI İÇİN: Daha detaylı audio constraints
-      // Telefon görüşmesi gibi kesintisiz çalışması için optimize edilmiş ayarlar
-      const audioConstraints: MediaTrackConstraints = {
-        echoCancellation: true, // Yankı iptali - telefon görüşmesi gibi
-        noiseSuppression: true, // Gürültü bastırma
-        autoGainControl: true, // Otomatik ses seviyesi
-        sampleRate: 44100, // Yüksek kalite
-        channelCount: 1, // Mono
-      };
-      
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: audioConstraints 
-        });
-        console.log('✅ [PLAYER] Mikrofon izni verildi! Stream aktif:', stream.active);
-        console.log('📱 [PLAYER] Stream ID:', stream.id);
-        console.log('📱 [PLAYER] Stream active:', stream.active);
+      // 1. Mikrofon izni kontrolü - SADECE KONUŞARAK MODUNDA
+      if (!isManualMode) {
+        console.log('🎤 [PLAYER] Mikrofon izni isteniyor...');
         
-        // Audio tracks detaylı bilgi
-        const audioTracks = stream.getAudioTracks();
-        console.log('📱 [PLAYER] Audio tracks sayısı:', audioTracks.length);
-        audioTracks.forEach((track, index) => {
-          console.log(`📱 [PLAYER] Audio track[${index}]:`, {
-            id: track.id,
-            kind: track.kind,
-            label: track.label,
-            enabled: track.enabled,
-            readyState: track.readyState,
-            muted: track.muted,
-            settings: track.getSettings()
+        // MOBİL TARAYICI İÇİN: Daha detaylı audio constraints
+        // Telefon görüşmesi gibi kesintisiz çalışması için optimize edilmiş ayarlar
+        const audioConstraints: MediaTrackConstraints = {
+          echoCancellation: true, // Yankı iptali - telefon görüşmesi gibi
+          noiseSuppression: true, // Gürültü bastırma
+          autoGainControl: true, // Otomatik ses seviyesi
+          sampleRate: 44100, // Yüksek kalite
+          channelCount: 1, // Mono
+        };
+        
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: audioConstraints 
           });
-        });
-        
-        // Stream'in aktif olduğunu kontrol et
-        const streamAudioTracks = stream.getAudioTracks();
-        if (streamAudioTracks.length === 0) {
-          throw new Error('Mikrofon stream\'inde audio track bulunamadı');
-        }
-        
-        // Track'in enabled olduğunu kontrol et
-        const audioTrack = streamAudioTracks[0];
-        if (!audioTrack.enabled) {
-          audioTrack.enabled = true;
+          console.log('✅ [PLAYER] Mikrofon izni verildi! Stream aktif:', stream.active);
+          console.log('📱 [PLAYER] Stream ID:', stream.id);
+          console.log('📱 [PLAYER] Stream active:', stream.active);
+          
+          // Audio tracks detaylı bilgi
+          const audioTracks = stream.getAudioTracks();
+          console.log('📱 [PLAYER] Audio tracks sayısı:', audioTracks.length);
+          audioTracks.forEach((track, index) => {
+            console.log(`📱 [PLAYER] Audio track[${index}]:`, {
+              id: track.id,
+              kind: track.kind,
+              label: track.label,
+              enabled: track.enabled,
+              readyState: track.readyState,
+              muted: track.muted,
+              settings: track.getSettings()
+            });
+          });
+          
+          // Stream'in aktif olduğunu kontrol et
+          const streamAudioTracks = stream.getAudioTracks();
+          if (streamAudioTracks.length === 0) {
+            throw new Error('Mikrofon stream\'inde audio track bulunamadı');
+          }
+          
+          // Track'in enabled olduğunu kontrol et
+          const audioTrack = streamAudioTracks[0];
+          if (!audioTrack.enabled) {
+            audioTrack.enabled = true;
+          }
+
+          console.log('✅ [PLAYER] Audio track durumu:', {
+            enabled: audioTrack.enabled,
+            readyState: audioTrack.readyState,
+            label: audioTrack.label,
+            muted: audioTrack.muted
+          });
+          
+          // Stream'i global olarak sakla (gerekirse)
+          (window as any).__microphoneStream = stream;
+          
+        } catch (error: any) {
+          console.error('❌ [PLAYER] Mikrofon izni hatası:', error);
+          
+          // Detaylı hata mesajı
+          let errorMessage = 'Mikrofon erişimi reddedildi';
+          if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            errorMessage = 'Mikrofon izni reddedildi. Lütfen tarayıcı ayarlarından mikrofon iznini verin.';
+          } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+            errorMessage = 'Mikrofon bulunamadı. Lütfen cihazınızda mikrofon olduğundan emin olun.';
+          } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+            errorMessage = 'Mikrofon başka bir uygulama tarafından kullanılıyor. Lütfen diğer uygulamaları kapatın.';
+          } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+            errorMessage = 'Mikrofon ayarları desteklenmiyor. Daha basit ayarlarla tekrar deniyoruz...';
+            // Daha basit constraints ile tekrar dene
+            try {
+              const simpleStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              console.log('✅ [PLAYER] Basit constraints ile mikrofon açıldı');
+              (window as any).__microphoneStream = simpleStream;
+            } catch (simpleError) {
+              throw new Error(errorMessage);
+            }
+          } else {
+            errorMessage = `Mikrofon hatası: ${error.message || error.name}`;
+          }
+          
+          throw new Error(errorMessage);
         }
 
-        console.log('✅ [PLAYER] Audio track durumu:', {
-          enabled: audioTrack.enabled,
-          readyState: audioTrack.readyState,
-          label: audioTrack.label,
-          muted: audioTrack.muted
-        });
-        
-        // Stream'i global olarak sakla (gerekirse)
-        (window as any).__microphoneStream = stream;
-        
-      } catch (error: any) {
-        console.error('❌ [PLAYER] Mikrofon izni hatası:', error);
-        
-        // Detaylı hata mesajı
-        let errorMessage = 'Mikrofon erişimi reddedildi';
-        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-          errorMessage = 'Mikrofon izni reddedildi. Lütfen tarayıcı ayarlarından mikrofon iznini verin.';
-        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-          errorMessage = 'Mikrofon bulunamadı. Lütfen cihazınızda mikrofon olduğundan emin olun.';
-        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-          errorMessage = 'Mikrofon başka bir uygulama tarafından kullanılıyor. Lütfen diğer uygulamaları kapatın.';
-        } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
-          errorMessage = 'Mikrofon ayarları desteklenmiyor. Daha basit ayarlarla tekrar deniyoruz...';
-          // Daha basit constraints ile tekrar dene
+        // 2. AudioContext başlat (Android 10+ için kritik - suspended yönetimi)
+        await audioContextService.initialize();
+        console.log('✅ [PLAYER] AudioContext başlatıldı - suspended monitoring aktif');
+
+        // 3. DUMMY RECORDER başlat - SADECE NATIVE ANDROID APP İÇİN
+        // Web sitesinden (GitHub Pages) çalışıyorsa Capacitor yok, bu yüzden çalışmaz
+        // Bu Android'e "ses kaydediyorum" sinyali verir, böylece mikrofon kapanmaz
+        if (isAndroid()) {
           try {
-            const simpleStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            console.log('✅ [PLAYER] Basit constraints ile mikrofon açıldı');
-            (window as any).__microphoneStream = simpleStream;
-          } catch (simpleError) {
-            throw new Error(errorMessage);
+            console.log('📱 [PLAYER] Native Android app tespit edildi - Dummy recorder başlatılıyor...');
+            await dummyRecorderService.start();
+            // 1 saniye bekle - Android'in "kayıt modunu" anlaması için
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log('✅ [PLAYER] Dummy recorder başlatıldı - Android mikrofonu kapanmayacak');
+          } catch (dummyError) {
+            console.error('❌ [PLAYER] Dummy recorder başlatılamadı:', dummyError);
+            // Dummy recorder olmadan da devam et
           }
         } else {
-          errorMessage = `Mikrofon hatası: ${error.message || error.name}`;
+          console.log('🌐 [PLAYER] Web sitesi tespit edildi - Dummy recorder gerek yok (mikrofon zaten stabil)');
         }
-        
-        throw new Error(errorMessage);
+      } else {
+        console.log('👆 [PLAYER] Manuel işaretleme modu - Mikrofon izni istenmeyecek');
       }
-
-      // 2. AudioContext başlat (Android 10+ için kritik - suspended yönetimi)
-      await audioContextService.initialize();
-      console.log('✅ [PLAYER] AudioContext başlatıldı - suspended monitoring aktif');
 
       // 3. Veritabanını başlat
       await dbAdapter.initialize();
-
-      // 4. DUMMY RECORDER başlat - SADECE NATIVE ANDROID APP İÇİN
-      // Web sitesinden (GitHub Pages) çalışıyorsa Capacitor yok, bu yüzden çalışmaz
-      // Bu Android'e "ses kaydediyorum" sinyali verir, böylece mikrofon kapanmaz
-      if (isAndroid()) {
-        try {
-          console.log('📱 [PLAYER] Native Android app tespit edildi - Dummy recorder başlatılıyor...');
-          await dummyRecorderService.start();
-          // 1 saniye bekle - Android'in "kayıt modunu" anlaması için
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          console.log('✅ [PLAYER] Dummy recorder başlatıldı - Android mikrofonu kapanmayacak');
-        } catch (dummyError) {
-          console.error('❌ [PLAYER] Dummy recorder başlatılamadı:', dummyError);
-          // Dummy recorder olmadan da devam et
-        }
-      } else {
-        console.log('🌐 [PLAYER] Web sitesi tespit edildi - Dummy recorder gerek yok (mikrofon zaten stabil)');
-      }
 
       // 5. Müzik varsa oynat
       if (audioFilePath) {
@@ -683,40 +703,160 @@ ${logs || '(Henüz log yok)'}
         }
       }
 
-      // 6. Konuşma tanımayı başlat - ANDROID WEBVIEW'DE NATIVE KULLAN
-      console.log('🎤 [PLAYER] Speech Recognition başlatılıyor...');
-      
-      // Android WebView tespit et - Web Speech API çalışmıyor
-      const isAndroidWebView = /Android.*wv/i.test(navigator.userAgent);
-      const hasCapacitor = !!(window as any).Capacitor;
-      const isNativeAndroid = hasCapacitor && (window as any).Capacitor.getPlatform() === 'android';
-      
-      console.log('🔍 [PLAYER] Platform tespiti:');
-      console.log('🔍 [PLAYER] User Agent:', navigator.userAgent);
-      console.log('🔍 [PLAYER] isAndroidWebView:', isAndroidWebView);
-      console.log('🔍 [PLAYER] hasCapacitor:', hasCapacitor);
-      console.log('🔍 [PLAYER] isNativeAndroid:', isNativeAndroid);
-      console.log('🔍 [PLAYER] AndroidSpeechBridge var mı:', !!(window as any).AndroidSpeechBridge);
-      
-      if (isAndroidWebView || isNativeAndroid) {
-        // ANDROID WEBVIEW: Native Android Speech Recognition kullan
-        console.log('📱 [PLAYER] ⚡⚡⚡ Android WebView tespit edildi - Native Speech Recognition kullanılıyor... ⚡⚡⚡');
-        try {
-          console.log('📱 [PLAYER] nativeSpeechRecognitionService.initialize() çağrılıyor...');
-          await nativeSpeechRecognitionService.initialize(
-            handleWordDetected,
-            (error: Error) => {
-              console.error('❌ [PLAYER] Native Speech Recognition error callback:', error);
-              toast.error(error.message, { duration: 3000 });
-              setError(error.message);
+      // 6. Konuşma tanımayı başlat - SADECE KONUŞARAK MODUNDA
+      if (!isManualMode) {
+        console.log('🎤 [PLAYER] Speech Recognition başlatılıyor...');
+        addDebugLog('[LOG] 🎤 [PLAYER] Speech Recognition başlatılıyor...');
+        
+        // Android WebView tespit et - Web Speech API çalışmıyor
+        const isAndroidWebView = /Android.*wv/i.test(navigator.userAgent);
+        const hasCapacitor = !!(window as any).Capacitor;
+        const isNativeAndroid = hasCapacitor && (window as any).Capacitor.getPlatform() === 'android';
+        const hasAndroidBridge = !!(window as any).AndroidSpeechBridge;
+        
+        // Web Speech API kontrolü - Android WebView'de de çalışabilir
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const hasWebSpeechAPI = !!SpeechRecognition;
+        
+        console.log('🔍 [PLAYER] Platform tespiti:');
+        console.log('🔍 [PLAYER] User Agent:', navigator.userAgent);
+        console.log('🔍 [PLAYER] isAndroidWebView:', isAndroidWebView);
+        console.log('🔍 [PLAYER] hasCapacitor:', hasCapacitor);
+        console.log('🔍 [PLAYER] isNativeAndroid:', isNativeAndroid);
+        console.log('🔍 [PLAYER] AndroidSpeechBridge var mı:', hasAndroidBridge);
+        console.log('🔍 [PLAYER] Web Speech API var mı:', hasWebSpeechAPI);
+        console.log('🔍 [PLAYER] SpeechRecognition type:', typeof SpeechRecognition);
+        console.log('🔍 [PLAYER] window.SpeechRecognition:', typeof (window as any).SpeechRecognition);
+        console.log('🔍 [PLAYER] window.webkitSpeechRecognition:', typeof (window as any).webkitSpeechRecognition);
+        addDebugLog(`[LOG] 🔍 [PLAYER] Platform tespiti: isAndroidWebView=${isAndroidWebView}, hasCapacitor=${hasCapacitor}, isNativeAndroid=${isNativeAndroid}, AndroidSpeechBridge=${hasAndroidBridge}, WebSpeechAPI=${hasWebSpeechAPI}`);
+        
+        // KRİTİK DEĞİŞİKLİK: ÖNCE Web Speech API'yi dene (Web'de çalışıyor, mobilde de çalışabilir)
+        // Eğer çalışmazsa Native Android Speech Recognition'a geç
+        const shouldTryWebSpeechFirst = hasWebSpeechAPI && (isAndroidWebView || isNativeAndroid);
+        console.log('🔍 [PLAYER] shouldTryWebSpeechFirst:', shouldTryWebSpeechFirst, '| hasWebSpeechAPI:', hasWebSpeechAPI, '| isAndroidWebView:', isAndroidWebView, '| isNativeAndroid:', isNativeAndroid);
+        addDebugLog(`[LOG] 🔍 [PLAYER] shouldTryWebSpeechFirst=${shouldTryWebSpeechFirst} | hasWebSpeechAPI=${hasWebSpeechAPI} | isAndroidWebView=${isAndroidWebView} | isNativeAndroid=${isNativeAndroid}`);
+        
+        if (shouldTryWebSpeechFirst) {
+          // ANDROID WEBVIEW + Web Speech API VAR: Önce Web Speech API'yi dene
+          console.log('🌐 [PLAYER] ⚡⚡⚡ Android WebView tespit edildi AMA Web Speech API var - ÖNCE Web Speech API deneniyor... ⚡⚡⚡');
+          addDebugLog('[LOG] 🌐 [PLAYER] ⚡⚡⚡ Android WebView tespit edildi AMA Web Speech API var - ÖNCE Web Speech API deneniyor... ⚡⚡⚡');
+          
+          try {
+            // 10 saniye içinde sonuç gelmezse Native'e geç
+            let webSpeechWorked = false;
+            const webSpeechTimeout = setTimeout(() => {
+              if (!webSpeechWorked) {
+                console.warn('⚠️ [PLAYER] Web Speech API 10 saniye içinde sonuç döndürmedi - Native Speech Recognition\'a geçiliyor...');
+                addDebugLog('[WARN] ⚠️ [PLAYER] Web Speech API 10 saniye içinde sonuç döndürmedi - Native Speech Recognition\'a geçiliyor...');
+              }
+            }, 10000);
+            
+            // Geçici callback - sonuç gelirse webSpeechWorked = true
+            const tempCallback = (word: string, confidence: number) => {
+              webSpeechWorked = true;
+              clearTimeout(webSpeechTimeout);
+              handleWordDetected(word, confidence);
+            };
+            
+            await speechRecognitionService.initialize(
+              tempCallback,
+              async (error: Error) => {
+                clearTimeout(webSpeechTimeout);
+                console.error('❌ [PLAYER] Web Speech API hatası:', error);
+                addDebugLog(`[ERROR] ❌ [PLAYER] Web Speech API hatası: ${error.message}`);
+                
+                // Fallback: Native Android Speech Recognition'a geç
+                console.warn('⚠️ [PLAYER] Web Speech API çalışmadı - Native Speech Recognition\'a geçiliyor...');
+                addDebugLog('[WARN] ⚠️ [PLAYER] Web Speech API çalışmadı - Native Speech Recognition\'a geçiliyor...');
+                
+                if (hasAndroidBridge) {
+                  try {
+                    await nativeSpeechRecognitionService.initialize(
+                      handleWordDetected,
+                      (nativeError: Error) => {
+                        console.error('❌ [PLAYER] Native Speech Recognition error callback:', nativeError);
+                        addDebugLog(`[ERROR] ❌ [PLAYER] Native Speech Recognition error callback: ${nativeError.message}`);
+                        toast.error(nativeError.message, { duration: 3000 });
+                        setError(nativeError.message);
+                      }
+                    );
+                    console.log('✅ [PLAYER] ⚡⚡⚡ Native Android Speech Recognition başlatıldı! ⚡⚡⚡');
+                    addDebugLog('[LOG] ✅ [PLAYER] ⚡⚡⚡ Native Android Speech Recognition başlatıldı! ⚡⚡⚡');
+                  } catch (nativeError) {
+                    const errorMsg = nativeError instanceof Error ? nativeError.message : String(nativeError);
+                    console.error('❌ [PLAYER] Native Speech Recognition başlatılamadı:', nativeError);
+                    addDebugLog(`[ERROR] ❌ [PLAYER] Native Speech Recognition başlatılamadı: ${errorMsg}`);
+                    toast.error('Speech Recognition başlatılamadı!', { duration: 5000 });
+                    setError('Speech Recognition başlatılamadı!');
+                  }
+                } else {
+                  toast.error('Speech Recognition başlatılamadı!', { duration: 5000 });
+                  setError('Speech Recognition başlatılamadı!');
+                }
+              }
+            );
+            
+            console.log('✅ [PLAYER] Web Speech API başlatıldı - 10 saniye içinde sonuç bekleniyor...');
+            addDebugLog('[LOG] ✅ [PLAYER] Web Speech API başlatıldı - 10 saniye içinde sonuç bekleniyor...');
+          } catch (webSpeechError) {
+            console.error('❌ [PLAYER] Web Speech API başlatılamadı:', webSpeechError);
+            addDebugLog(`[ERROR] ❌ [PLAYER] Web Speech API başlatılamadı: ${webSpeechError}`);
+            
+            // Fallback: Native Android Speech Recognition'a geç
+            if (hasAndroidBridge) {
+              try {
+                await nativeSpeechRecognitionService.initialize(
+                  handleWordDetected,
+                  (error: Error) => {
+                    toast.error(error.message, { duration: 3000 });
+                    setError(error.message);
+                  }
+                );
+              } catch (nativeError) {
+                toast.error('Speech Recognition başlatılamadı!', { duration: 5000 });
+                setError('Speech Recognition başlatılamadı!');
+              }
             }
-          );
-          console.log('✅ [PLAYER] ⚡⚡⚡ Native Android Speech Recognition başlatıldı! ⚡⚡⚡');
-        } catch (nativeError) {
-          console.error('❌ [PLAYER] Native Speech Recognition başlatılamadı:', nativeError);
-          console.error('❌ [PLAYER] Error details:', nativeError instanceof Error ? nativeError.message : String(nativeError));
-          // Fallback: Web Speech API'yi dene (çalışmayabilir)
-          console.warn('⚠️ [PLAYER] Fallback: Web Speech API deneniyor (çalışmayabilir)...');
+          }
+        } else if (isAndroidWebView || isNativeAndroid) {
+          // ANDROID WEBVIEW: Web Speech API yok, Native Android Speech Recognition kullan
+          console.log('📱 [PLAYER] ⚡⚡⚡ Android WebView tespit edildi - Native Speech Recognition kullanılıyor... ⚡⚡⚡');
+          addDebugLog('[LOG] 📱 [PLAYER] ⚡⚡⚡ Android WebView tespit edildi - Native Speech Recognition kullanılıyor... ⚡⚡⚡');
+          
+          if (!hasAndroidBridge) {
+            const errorMsg = '❌ [PLAYER] AndroidSpeechBridge bulunamadı! Native Android app kullanmalısınız.';
+            console.error(errorMsg);
+            addDebugLog(`[ERROR] ${errorMsg}`);
+            toast.error('Android Speech Bridge bulunamadı!', { duration: 5000 });
+            setError('Android Speech Bridge bulunamadı!');
+            throw new Error('Android Speech Bridge bulunamadı!');
+          }
+          
+          try {
+            await nativeSpeechRecognitionService.initialize(
+              handleWordDetected,
+              (error: Error) => {
+                console.error('❌ [PLAYER] Native Speech Recognition error callback:', error);
+                addDebugLog(`[ERROR] ❌ [PLAYER] Native Speech Recognition error callback: ${error.message}`);
+                toast.error(error.message, { duration: 3000 });
+                setError(error.message);
+              }
+            );
+            
+            console.log('✅ [PLAYER] ⚡⚡⚡ Native Android Speech Recognition başlatıldı! ⚡⚡⚡');
+            addDebugLog('[LOG] ✅ [PLAYER] ⚡⚡⚡ Native Android Speech Recognition başlatıldı! ⚡⚡⚡');
+          } catch (nativeError) {
+            const errorMsg = nativeError instanceof Error ? nativeError.message : String(nativeError);
+            console.error('❌ [PLAYER] Native Speech Recognition başlatılamadı:', nativeError);
+            addDebugLog(`[ERROR] ❌ [PLAYER] Native Speech Recognition başlatılamadı: ${errorMsg}`);
+            toast.error('Speech Recognition başlatılamadı!', { duration: 5000 });
+            setError('Speech Recognition başlatılamadı!');
+          }
+        } else {
+          // WEB: Web Speech API kullan
+          console.log('🌐 [PLAYER] Web platformu tespit edildi - Web Speech API kullanılıyor...');
+          addDebugLog('[LOG] 🌐 [PLAYER] Web platformu tespit edildi - Web Speech API kullanılıyor...');
+          
           await speechRecognitionService.initialize(
             handleWordDetected,
             (error: Error) => {
@@ -724,18 +864,13 @@ ${logs || '(Henüz log yok)'}
               setError(error.message);
             }
           );
+          
+          console.log('✅ [PLAYER] Web Speech API başlatıldı - Mikrofon aktif!');
+          addDebugLog('[LOG] ✅ [PLAYER] Web Speech API başlatıldı - Mikrofon aktif!');
         }
       } else {
-        // WEB: Web Speech API kullan
-        console.log('🌐 [PLAYER] Web platformu tespit edildi - Web Speech API kullanılıyor...');
-        await speechRecognitionService.initialize(
-          handleWordDetected,
-          (error: Error) => {
-            toast.error(error.message, { duration: 3000 });
-            setError(error.message);
-          }
-        );
-        console.log('✅ [PLAYER] Web Speech API başlatıldı - Mikrofon aktif!');
+        console.log('👆 [PLAYER] Manuel işaretleme modu - Mikrofon başlatılmayacak');
+        addDebugLog('[LOG] 👆 [PLAYER] Manuel işaretleme modu - Mikrofon başlatılmayacak');
       }
       
       // Debug: Karaoke başladı
@@ -767,11 +902,12 @@ ${logs || '(Henüz log yok)'}
     } finally {
       setIsLoading(false);
     }
-  }, [handleWordDetected, audioFilePath]);
+  }, [handleWordDetected, audioFilePath, isManualMode]);
 
   // Karaoke durdur
   const stopKaraoke = useCallback(async (): Promise<void> => {
     setIsListening(false);
+    setModeSelected(false); // Mod seçimini sıfırla
     
     // 1. Önce Speech Recognition durdur (hem Web hem Native)
     speechRecognitionService.stop();
@@ -835,6 +971,37 @@ ${logs || '(Henüz log yok)'}
     audioControlService.stop();
     // Dummy recorder aktifse durdurma, sadece reset yap
   }, []);
+
+  // Kelime tıklama (manuel ilerleme) - İSTEDİĞİ KELİMEYE TIKLAYABİLME
+  const handleWordClick = useCallback((index: number) => {
+    if (!isManualMode || !isListening) {
+      return;
+    }
+
+    // İleri git - tıklanan kelimeye kadar TÜM kelimeleri işaretle
+    if (index > currentWordIndex) {
+      // Mevcut pozisyondan tıklanan kelimeye kadar tüm kelimeleri işaretle
+      for (let i = currentWordIndex; i < index; i++) {
+        const word = words[i + 1]; // Bir sonraki kelimeyi al
+        if (word) {
+          matcherRef.current.processWord(word, 1.0);
+        }
+      }
+      setCurrentWordIndex(index);
+      setAccuracy(Math.round(matcherRef.current.getAccuracy() * 100));
+      console.log(`👆 [MANUAL] Kelime tıklandı: "${words[index]}" (index: ${index}) - ${index - currentWordIndex} kelime işaretlendi`);
+    } else if (index < currentWordIndex) {
+      // Geri git - tıklanan kelimeye kadar geri al
+      const stepsBack = currentWordIndex - index;
+      for (let i = 0; i < stepsBack; i++) {
+        matcherRef.current.undoLastWord();
+      }
+      setCurrentWordIndex(index);
+      setAccuracy(Math.round(matcherRef.current.getAccuracy() * 100));
+      console.log(`👆 [MANUAL] Geri alındı (index: ${index}) - ${stepsBack} kelime geri alındı`);
+    }
+    // index === currentWordIndex ise hiçbir şey yapma (aynı kelimeye tekrar tıklandı)
+  }, [isManualMode, isListening, currentWordIndex, words]);
 
   // Cleanup - component unmount olduğunda
   useEffect(() => {
@@ -1091,6 +1258,7 @@ ${logs || '(Henüz log yok)'}
                         index: i
                       } : null
                     )}
+                    onWordClick={isManualMode && isListening ? handleWordClick : undefined}
                   />
                 </div>
               ) : (
@@ -1105,12 +1273,13 @@ ${logs || '(Henüz log yok)'}
                         <motion.span
                           key={`${word}-${index}`}
                           data-index={index}
+                          onClick={() => handleWordClick(index)}
                           animate={isActive ? {
                             scale: [1, 1.15, 1],
                             textShadow: ['0 0 0px rgba(251, 191, 36, 0)', '0 0 20px rgba(251, 191, 36, 1)', '0 0 0px rgba(251, 191, 36, 0)'],
                           } : {}}
                           transition={{ duration: 0.3 }}
-                          className={`inline-block mr-1 sm:mr-2 mb-1 sm:mb-2 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg border transition-all duration-200 ${getWordStyle(index)}`}
+                          className={`inline-block mr-1 sm:mr-2 mb-1 sm:mb-2 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg border transition-all duration-200 ${getWordStyle(index)} ${isManualMode && isListening && (index === currentWordIndex + 1 || index < currentWordIndex) ? 'cursor-pointer hover:bg-white/10 hover:scale-105 active:scale-95' : ''}`}
                         >
                           {word}
                         </motion.span>
@@ -1122,51 +1291,112 @@ ${logs || '(Henüz log yok)'}
             </div>
 
             {/* Kontrol Butonları */}
-            <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-3 sm:gap-4 mt-4 sm:mt-6 md:mt-8">
-              {!isListening ? (
-                <motion.button
-                  whileHover={{ scale: 1.05, y: -5 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={startKaraoke}
-                  disabled={isLoading}
-                  className="relative w-full sm:w-auto px-8 sm:px-10 md:px-12 py-3 sm:py-3.5 md:py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl sm:rounded-3xl font-bold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 shadow-2xl shadow-purple-600/40 hover:shadow-purple-600/60 transition-all disabled:opacity-50"
+            <div className="flex flex-col gap-3 sm:gap-4 mt-4 sm:mt-6 md:mt-8">
+              {/* Mod Seçimi - KARAOKE BAŞLATMADAN ÖNCE - HER ZAMAN GÖSTER */}
+              {!isListening && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col gap-3"
                 >
-                  {isLoading ? (
-                    <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
-                  )}
-                  <span>{isLoading ? 'Yükleniyor...' : 'KARAOKE BAŞLAT'}</span>
-                  {/* Pulse Effect */}
-                  {!isLoading && (
-                    <motion.div
-                      animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                      className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl sm:rounded-3xl"
-                      style={{ zIndex: -1 }}
-                    />
-                  )}
-                </motion.button>
-              ) : (
-                <motion.button
-                  whileHover={{ scale: 1.05, y: -5 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={stopKaraoke}
-                  className="relative w-full sm:w-auto px-8 sm:px-10 md:px-12 py-3 sm:py-3.5 md:py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-2xl sm:rounded-3xl font-bold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 shadow-2xl shadow-red-600/40"
-                >
-                  <MicOff className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span>DURDUR</span>
-                </motion.button>
+                  <p className="text-center text-sm sm:text-base text-gray-300 mb-2">
+                    Nasıl ilerlemek istersiniz?
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        setIsManualMode(true);
+                        setModeSelected(true);
+                        toast.success('👆 İşaretleme modu seçildi - Kelimelere dokunarak ilerleyeceksiniz', { duration: 3000 });
+                      }}
+                      className="flex-1 px-6 py-4 bg-blue-600/20 border-2 border-blue-500/50 rounded-xl hover:bg-blue-600/30 transition-all flex items-center justify-center gap-3"
+                    >
+                      <Hand className="w-6 h-6 text-blue-400" />
+                      <span className="font-semibold text-base sm:text-lg text-blue-400">İŞARETLEME</span>
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        setIsManualMode(false);
+                        setModeSelected(true);
+                        toast.success('🎤 Konuşarak modu seçildi - Mikrofon ile ilerleyeceksiniz', { duration: 3000 });
+                      }}
+                      className="flex-1 px-6 py-4 bg-purple-600/20 border-2 border-purple-500/50 rounded-xl hover:bg-purple-600/30 transition-all flex items-center justify-center gap-3"
+                    >
+                      <MicOff className="w-6 h-6 text-purple-400" />
+                      <span className="font-semibold text-base sm:text-lg text-purple-400">KONUŞARAK</span>
+                    </motion.button>
+                  </div>
+                </motion.div>
               )}
-              
-              <motion.button
-                whileHover={{ scale: 1.05, y: -5 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleReset}
-                className="w-full sm:w-auto p-3 sm:p-4 bg-white/10 rounded-2xl sm:rounded-3xl border border-white/20 hover:bg-white/20 transition-all flex items-center justify-center"
-              >
-                <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-              </motion.button>
+
+              {/* Karaoke Başlat/Durdur Butonları - MOD SEÇİLDİYSE GÖSTER */}
+              {modeSelected && (
+                <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-3 sm:gap-4">
+                  {!isListening ? (
+                    <motion.button
+                      whileHover={{ scale: 1.05, y: -5 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={startKaraoke}
+                      disabled={isLoading}
+                      className="relative w-full sm:w-auto px-8 sm:px-10 md:px-12 py-3 sm:py-3.5 md:py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl sm:rounded-3xl font-bold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 shadow-2xl shadow-purple-600/40 hover:shadow-purple-600/60 transition-all disabled:opacity-50"
+                    >
+                      {isLoading ? (
+                        <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
+                      )}
+                      <span>{isLoading ? 'Yükleniyor...' : 'KARAOKE BAŞLAT'}</span>
+                      {/* Pulse Effect */}
+                      {!isLoading && (
+                        <motion.div
+                          animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                          className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl sm:rounded-3xl"
+                          style={{ zIndex: -1 }}
+                        />
+                      )}
+                    </motion.button>
+                  ) : (
+                    <motion.button
+                      whileHover={{ scale: 1.05, y: -5 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={stopKaraoke}
+                      className="relative w-full sm:w-auto px-8 sm:px-10 md:px-12 py-3 sm:py-3.5 md:py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-2xl sm:rounded-3xl font-bold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 shadow-2xl shadow-red-600/40"
+                    >
+                      <MicOff className="w-5 h-5 sm:w-6 sm:h-6" />
+                      <span>DURDUR</span>
+                    </motion.button>
+                  )}
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.05, y: -5 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => {
+                      handleReset();
+                      setModeSelected(false);
+                      setIsManualMode(false);
+                    }}
+                    className="w-full sm:w-auto p-3 sm:p-4 bg-white/10 rounded-2xl sm:rounded-3xl border border-white/20 hover:bg-white/20 transition-all flex items-center justify-center"
+                  >
+                    <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                  </motion.button>
+                </div>
+              )}
+
+              {/* Seçilen Mod Göstergesi */}
+              {modeSelected && !isListening && (
+                <div className="text-center">
+                  <span className="text-sm text-gray-400">
+                    Seçilen mod: <span className="font-semibold text-white">
+                      {isManualMode ? '👆 İşaretleme' : '🎤 Konuşarak'}
+                    </span>
+                  </span>
+                </div>
+              )}
             </div>
           </motion.div>
         </div>

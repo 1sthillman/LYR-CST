@@ -5,9 +5,10 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // GitHub Pages için base path
-  // Repository adı LYR-CST ise base path '/LYR-CST/' olmalı
-  base: '/LYR-CST/',
+  // Base path - Android için '/' (root)
+  // GitHub Pages için '/LYR-CST/' gerekli ama Android'de '/' olmalı
+  // Android build için base path '/' kullanılıyor
+  base: '/',
   resolve: {
     alias: {
       '@components': path.resolve(__dirname, './src/components'),

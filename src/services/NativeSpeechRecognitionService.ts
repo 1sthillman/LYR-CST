@@ -25,19 +25,45 @@ export class NativeSpeechRecognitionService {
 
       // JavaScript bridge ile Android'e mesaj gönder
       console.log('📱 [NATIVE SPEECH] AndroidSpeechBridge aranıyor...');
+      console.log('📱 [NATIVE SPEECH] window object:', typeof window);
+      console.log('📱 [NATIVE SPEECH] window.AndroidSpeechBridge:', (window as any).AndroidSpeechBridge);
+      console.log('📱 [NATIVE SPEECH] window keys:', Object.keys(window).filter(k => k.includes('Android') || k.includes('Speech')));
+      
       const bridge = (window as any).AndroidSpeechBridge;
       console.log('📱 [NATIVE SPEECH] Bridge var mı:', !!bridge);
       console.log('📱 [NATIVE SPEECH] Bridge type:', typeof bridge);
+      console.log('📱 [NATIVE SPEECH] Bridge value:', bridge);
       
       if (!bridge) {
-        console.error('❌ [NATIVE SPEECH] Android Speech Bridge bulunamadı!');
-        console.error('❌ [NATIVE SPEECH] MainActivity.java\'da bridge kurulmalı.');
+        const errorMsg = '❌ [NATIVE SPEECH] Android Speech Bridge bulunamadı! MainActivity.java\'da bridge kurulmalı.';
+        console.error(errorMsg);
         console.error('❌ [NATIVE SPEECH] window.AndroidSpeechBridge:', (window as any).AndroidSpeechBridge);
-        throw new Error('Android Speech Bridge bulunamadı! Lütfen native Android app kullanın.');
+        console.error('❌ [NATIVE SPEECH] Tüm window keys:', Object.keys(window).slice(0, 50));
+        
+        // 5 saniye bekle ve tekrar dene (bazen bridge geç yüklenir)
+        console.log('📱 [NATIVE SPEECH] 5 saniye bekleniyor, bridge yüklenmesi için...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        const bridgeRetry = (window as any).AndroidSpeechBridge;
+        console.log('📱 [NATIVE SPEECH] Retry - Bridge var mı:', !!bridgeRetry);
+        
+        if (!bridgeRetry) {
+          throw new Error('Android Speech Bridge bulunamadı! Lütfen native Android app kullanın ve uygulamayı yeniden başlatın.');
+        }
+        
+        // Retry başarılı - bridge'i kullan
+        (window as any).AndroidSpeechBridge = bridgeRetry;
       }
 
+      const finalBridge = bridge || (window as any).AndroidSpeechBridge;
+      if (!finalBridge) {
+        throw new Error('Android Speech Bridge bulunamadı! Lütfen native Android app kullanın.');
+      }
+      
       console.log('✅ [NATIVE SPEECH] Android Speech Bridge bulundu');
-      console.log('📱 [NATIVE SPEECH] Bridge methods:', Object.keys(bridge));
+      console.log('📱 [NATIVE SPEECH] Bridge methods:', Object.keys(finalBridge));
+      console.log('📱 [NATIVE SPEECH] Bridge startListening var mı:', typeof finalBridge.startListening);
+      console.log('📱 [NATIVE SPEECH] Bridge stopListening var mı:', typeof finalBridge.stopListening);
 
       // Android'den gelen mesajları dinle
       (window as any).onNativeSpeechResult = (transcript: string, confidence: number) => {
@@ -73,6 +99,22 @@ export class NativeSpeechRecognitionService {
         }
       };
 
+      // Speech Recognition hazır olduğunda bildir
+      (window as any).onNativeSpeechReady = () => {
+        console.log('✅ [NATIVE SPEECH] ⚡⚡⚡ Speech Recognition hazır - Dinlemeye başladı! ⚡⚡⚡');
+        (window as any).__nativeSpeechReady = true; // Flag set et
+      };
+
+      // 5 saniye sonra hala onReadyForSpeech tetiklenmediyse hata bildir
+      setTimeout(() => {
+        if (!(window as any).__nativeSpeechReady) {
+          console.error('❌ [NATIVE SPEECH] onReadyForSpeech 5 saniye içinde tetiklenmedi - SpeechRecognizer başlatılamadı!');
+          if (this.onErrorCallback) {
+            this.onErrorCallback(new Error('SpeechRecognizer başlatılamadı - onReadyForSpeech tetiklenmedi'));
+          }
+        }
+      }, 5000);
+
       // Android'e başlatma mesajı gönder
       console.log('📱 [NATIVE SPEECH] Android\'e startListening() mesajı gönderiliyor...');
       console.log('📱 [NATIVE SPEECH] Bridge var mı:', !!bridge);
@@ -80,11 +122,18 @@ export class NativeSpeechRecognitionService {
       console.log('📱 [NATIVE SPEECH] Bridge startListening var mı:', typeof bridge.startListening);
       
       try {
-        bridge.startListening();
-        console.log('✅ [NATIVE SPEECH] bridge.startListening() çağrıldı');
+        if (!finalBridge || typeof finalBridge.startListening !== 'function') {
+          throw new Error('AndroidSpeechBridge.startListening() fonksiyonu bulunamadı!');
+        }
+        
+        console.log('📱 [NATIVE SPEECH] bridge.startListening() çağrılıyor...');
+        finalBridge.startListening();
+        console.log('✅ [NATIVE SPEECH] bridge.startListening() çağrıldı - BAŞARILI!');
       } catch (bridgeError) {
-        console.error('❌ [NATIVE SPEECH] bridge.startListening() hatası:', bridgeError);
-        throw bridgeError;
+        const errorMsg = bridgeError instanceof Error ? bridgeError.message : String(bridgeError);
+        console.error('❌ [NATIVE SPEECH] bridge.startListening() hatası:', errorMsg);
+        console.error('❌ [NATIVE SPEECH] Bridge error details:', bridgeError);
+        throw new Error(`Android Speech Bridge hatası: ${errorMsg}`);
       }
       
       this.isListening = true;

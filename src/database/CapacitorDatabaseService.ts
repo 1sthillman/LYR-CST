@@ -191,3 +191,4 @@ class CapacitorDatabaseService {
 export const capacitorDbService = new CapacitorDatabaseService();
 
 
+

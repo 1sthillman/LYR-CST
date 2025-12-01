@@ -132,3 +132,4 @@ npx cap sync android
 - [new.md](./new.md) - Teknik dokümantasyon
 
 
+

@@ -75,3 +75,4 @@ npx cap open android
 
 **Durum**: ✅ WebView entegrasyonu tamamlandı!
 
+

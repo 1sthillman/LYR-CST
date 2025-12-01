@@ -5,20 +5,28 @@
 ### Android Studio'da:
 1. Android Studio'yu açın
 2. **View > Tool Windows > Logcat** (veya Alt+6)
-3. Filtre: `chromium` veya `WebView` veya `console`
+3. Filtre: `LYRICST` veya `LYRICST_SPEECH` veya `LYRICST_MATCHER`
 4. Uygulamayı başlatın ve logları izleyin
 
 ### ADB ile (Terminal):
 ```bash
-# Tüm logları göster
-adb logcat
+# Tüm LYRICST loglarını göster
+adb logcat -s LYRICST
 
-# Sadece console.log'ları göster
+# Sadece Speech Recognition logları
+adb logcat -s LYRICST_SPEECH
+
+# Sadece Matcher logları
+adb logcat -s LYRICST_MATCHER
+
+# Sadece console.log'ları göster (eski yöntem)
 adb logcat | grep -E "\[DUMMY\]|\[SPEECH\]|\[PLAYER\]"
 
 # Logları dosyaya kaydet
-adb logcat > mikrofon_logs.txt
+adb logcat -s LYRICST:* > mikrofon_logs.txt
 ```
+
+**📱 Detaylı Android Log Rehberi için:** `ANDROID_LOG_REHBERI.md` dosyasına bakın!
 
 ### Chrome DevTools (WebView):
 1. Android cihazı USB ile bağlayın
@@ -96,5 +104,10 @@ Logları kopyalayıp gönderirken:
 
 ---
 
-**Not**: Loglar console'da görünecek. Android Studio Logcat veya Chrome DevTools ile görebilirsiniz.
+**Not**: 
+- **Web versiyonunda:** Loglar browser console'da görünecek
+- **Android versiyonunda:** Loglar Android Logcat'te görünecek (LYRICST tag'i ile)
+- **Detaylı Android log rehberi:** `ANDROID_LOG_REHBERI.md` dosyasına bakın
+
+**🎉 Artık Android'de de web versiyonundaki kadar detaylı loglar var!**
 

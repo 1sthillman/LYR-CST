@@ -529,6 +529,29 @@ export class LyricsMatcher {
   }
 
   /**
+   * Son kelimeyi geri al (undo)
+   */
+  undoLastWord(): void {
+    if (this._currentPosition > 0) {
+      // Son kelimeyi temizle
+      const lastIndex = this._currentPosition - 1;
+      this.matchedWords[lastIndex] = null;
+      this._currentPosition = lastIndex;
+      this.lastMatchTime = Date.now();
+      this.lastWordDetectedTime = Date.now();
+      this.lastDetectedWord = '';
+      this.consecutiveNoMatchCount = 0;
+      this.clearStuckTimeout();
+      
+      if (this.onPositionChange) {
+        this.onPositionChange(this._currentPosition);
+      }
+      
+      console.log(`↩️ [MATCHER] Son kelime geri alındı, pozisyon: ${this._currentPosition}`);
+    }
+  }
+
+  /**
    * Eşleştirmeyi sıfırlar
    */
   reset(): void {

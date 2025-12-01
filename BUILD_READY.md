@@ -85,3 +85,4 @@ npx cap open android
 **Durum**: ✅ BUILD HAZIR
 
 
+

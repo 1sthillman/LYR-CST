@@ -34,12 +34,27 @@ export class AudioControlService {
 
       let audioSrc = filePath;
 
-      // Blob URL ise (GitHub Pages'de çalışmaz) - data URL'e dönüştür
+      // Blob URL ise (APK ve GitHub Pages'de çalışmaz) - data URL'e dönüştür
       if (filePath.startsWith('blob:')) {
         try {
-          const response = await fetch(filePath);
+          // Blob URL'i fetch etmeye çalış
+          let response: Response;
+          try {
+            response = await fetch(filePath);
+          } catch (fetchError) {
+            // Fetch başarısız olursa, blob URL'i direkt kullan (bazı durumlarda çalışabilir)
+            console.warn('Blob URL fetch edilemedi, direkt kullanılıyor:', fetchError);
+            audioSrc = filePath;
+            return;
+          }
+          
+          if (!response.ok) {
+            throw new Error(`Blob fetch failed: ${response.status}`);
+          }
+          
           const blob = await response.blob();
-          // Blob'u data URL'e dönüştür (GitHub Pages uyumlu)
+          
+          // Blob'u data URL'e dönüştür (APK ve GitHub Pages uyumlu)
           const reader = new FileReader();
           audioSrc = await new Promise<string>((resolve, reject) => {
             reader.onloadend = () => {
@@ -49,11 +64,16 @@ export class AudioControlService {
                 reject(new Error('Blob okunamadı'));
               }
             };
-            reader.onerror = reject;
+            reader.onerror = (error) => {
+              console.warn('Blob okuma hatası, direkt kullanılıyor:', error);
+              resolve(filePath); // Hata olursa direkt blob URL'i kullan
+            };
             reader.readAsDataURL(blob);
           });
         } catch (error) {
           console.warn('Blob URL dönüştürme hatası, direkt kullanılıyor:', error);
+          // Hata olursa direkt blob URL'i kullan (bazı durumlarda çalışabilir)
+          audioSrc = filePath;
         }
       }
       // Android için özel işlem

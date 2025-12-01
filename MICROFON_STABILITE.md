@@ -66,3 +66,4 @@ Android'de mikrofonun sürekli açılıp kapanması sorunu **DummyRecorderServic
 **Tarih**: 2025-11-30  
 **Test**: Android cihazda test edildi
 
+

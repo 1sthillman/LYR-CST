@@ -69,3 +69,4 @@ Settings'de ayarları yaptınız ama site linki görünmüyor.
 
 **Önemli**: İlk deploy genellikle 5-10 dakika sürer. Sabırlı olun! ⏳
 
+

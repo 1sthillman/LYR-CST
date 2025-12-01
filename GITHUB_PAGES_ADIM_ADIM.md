@@ -96,3 +96,4 @@ Görsellerden anladığım kadarıyla:
 
 **Önemli**: Workflow permissions ayarları kritik! Mutlaka kontrol edin! 🔐
 
+

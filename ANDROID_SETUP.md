@@ -143,3 +143,4 @@ Sorun yaşarsanız:
 3. Capacitor dokümantasyonunu inceleyin
 
 
+

@@ -29,3 +29,4 @@ echo "✅ Android kurulumu tamamlandı!"
 echo "📱 Android Studio'da açmak için: npx cap open android"
 
 
+

@@ -194,3 +194,4 @@ Tüm kontroller tamamlandıysa, uygulama build için hazırdır!
 **Not:** İlk build biraz uzun sürebilir (Gradle indirme, derleme vb.)
 
 
+
