@@ -26,6 +26,37 @@ export class LyricsMatcher {
   private stuckTimeoutId: number | null = null;
   private onPositionChange: ((newPosition: number) => void) | null = null;
 
+  // Performance cache (speed.md'den)
+  private phoneticCache: Map<string, string> = new Map();
+  private normalizedCache: Map<string, string> = new Map();
+  
+  // Türkçe özel karakterler için normalizasyon (speed.md'den)
+  private readonly TR_CHARS: Record<string, string> = {
+    'ç': 'c', 'ğ': 'g', 'ı': 'i', 'İ': 'i', 'ö': 'o', 
+    'ş': 's', 'ü': 'u', 'Ç': 'c', 'Ğ': 'g', 'Ö': 'o', 
+    'Ş': 's', 'Ü': 'u'
+  };
+
+  // Yaygın ses benzerlikler (Türkçe fonetik) (speed.md'den)
+  private readonly PHONETIC_SIMILAR: Record<string, string[]> = {
+    'c': ['ç', 'j'],
+    'ç': ['c', 'j'],
+    's': ['ş', 'z'],
+    'ş': ['s', 'z'],
+    'i': ['ı', 'e'],
+    'ı': ['i', 'e'],
+    'o': ['ö', 'u'],
+    'ö': ['o', 'u'],
+    'u': ['ü', 'o'],
+    'ü': ['u', 'o'],
+    'k': ['g'],
+    'g': ['k'],
+    't': ['d'],
+    'd': ['t'],
+    'p': ['b'],
+    'b': ['p']
+  };
+
   constructor() {
     this.adaptiveThreshold = new AdaptiveThreshold();
   }
@@ -68,6 +99,11 @@ export class LyricsMatcher {
     this.consecutiveNoMatchCount = 0;
     this.adaptiveThreshold.reset();
     this.clearStuckTimeout();
+    
+    // Cache'leri temizle (speed.md'den)
+    this.phoneticCache.clear();
+    this.normalizedCache.clear();
+    
     console.log('Şarkı sözleri ayarlandı, toplam kelime:', this.lyrics.length);
   }
 
@@ -244,13 +280,81 @@ export class LyricsMatcher {
       this.lyrics.length
     );
 
+    // 6 KATMANLI EŞLEŞTİRME (speed.md'den) - Önce exact match'i dene (en hızlı)
+    // 1. EXACT MATCH (en hızlı) - speed.md'den
     for (let i = searchStart; i < searchEnd; i++) {
       const targetWord = this.lyrics[i];
-      const similarity = calculateSimilarity(targetWord, detectedWordClean);
-      
-      // En iyi eşleşmeyi bul
-      if (!bestMatch || similarity > bestMatch.similarity) {
-        bestMatch = { index: i, similarity };
+      if (this.exactMatch(detectedWordClean, targetWord)) {
+        bestMatch = { index: i, similarity: 1.0 };
+        break; // En hızlı eşleşme bulundu, döngüden çık
+      }
+    }
+
+    // 2. NORMALIZED MATCH - speed.md'den
+    if (!bestMatch) {
+      for (let i = searchStart; i < searchEnd; i++) {
+        const targetWord = this.lyrics[i];
+        if (this.normalizedMatch(detectedWordClean, targetWord)) {
+          bestMatch = { index: i, similarity: 0.95 };
+          break;
+        }
+      }
+    }
+
+    // 3. PHONETIC MATCH - speed.md'den
+    if (!bestMatch) {
+      for (let i = searchStart; i < searchEnd; i++) {
+        const targetWord = this.lyrics[i];
+        const phoneticScore = this.phoneticMatch(detectedWordClean, targetWord);
+        if (phoneticScore > 0.8) {
+          bestMatch = { index: i, similarity: phoneticScore };
+          break;
+        }
+      }
+    }
+
+    // 4. FUZZY MATCH (Levenshtein) - speed.md'den
+    if (!bestMatch) {
+      for (let i = searchStart; i < searchEnd; i++) {
+        const targetWord = this.lyrics[i];
+        const fuzzyScore = this.fuzzyMatch(detectedWordClean, targetWord);
+        if (fuzzyScore > 0.7) {
+          if (!bestMatch || fuzzyScore > bestMatch.similarity) {
+            bestMatch = { index: i, similarity: fuzzyScore };
+          }
+        }
+      }
+    }
+
+    // 5. PARTIAL MATCH - speed.md'den
+    if (!bestMatch) {
+      for (let i = searchStart; i < searchEnd; i++) {
+        const targetWord = this.lyrics[i];
+        if (this.partialMatch(detectedWordClean, targetWord)) {
+          bestMatch = { index: i, similarity: 0.6 };
+          break;
+        }
+      }
+    }
+
+    // 6. PREDICTIVE MATCH (sonraki kelimeler) - speed.md'den
+    if (!bestMatch) {
+      const predictiveMatch = this.predictiveMatch(detectedWordClean, searchStart, searchEnd);
+      if (predictiveMatch) {
+        bestMatch = { index: predictiveMatch.index, similarity: predictiveMatch.similarity };
+      }
+    }
+
+    // Fallback: Eğer hiçbir katman eşleşmediyse, eski calculateSimilarity kullan
+    if (!bestMatch) {
+      for (let i = searchStart; i < searchEnd; i++) {
+        const targetWord = this.lyrics[i];
+        const similarity = calculateSimilarity(targetWord, detectedWordClean);
+        
+        // En iyi eşleşmeyi bul
+        if (!bestMatch || similarity > bestMatch.similarity) {
+          bestMatch = { index: i, similarity };
+        }
       }
     }
 
@@ -585,5 +689,139 @@ export class LyricsMatcher {
    */
   get currentThreshold(): number {
     return this.adaptiveThreshold.getThreshold();
+  }
+
+  /**
+   * 6 KATMANLI EŞLEŞTİRME YARDIMCI FONKSİYONLARI (speed.md'den)
+   */
+
+  // 1. EXACT MATCH
+  private exactMatch(spoken: string, target: string): boolean {
+    return this.normalizeWithCache(spoken) === this.normalizeWithCache(target);
+  }
+
+  // 2. NORMALIZED MATCH
+  private normalizedMatch(spoken: string, target: string): boolean {
+    const normalizedSpoken = this.normalizeWithCache(spoken);
+    const normalizedTarget = this.normalizeWithCache(target);
+    return normalizedSpoken === normalizedTarget;
+  }
+
+  // 3. PHONETIC MATCH
+  private phoneticMatch(spoken: string, target: string): number {
+    const phoneticSpoken = this.toPhonetic(spoken);
+    const phoneticTarget = this.toPhonetic(target);
+    
+    if (phoneticSpoken === phoneticTarget) {
+      return 1.0;
+    }
+
+    // Levenshtein distance ile benzerlik hesapla
+    const distance = this.levenshteinDistance(phoneticSpoken, phoneticTarget);
+    const maxLen = Math.max(phoneticSpoken.length, phoneticTarget.length);
+    return 1 - (distance / maxLen);
+  }
+
+  // 4. FUZZY MATCH (Levenshtein)
+  private fuzzyMatch(spoken: string, target: string): number {
+    const normalized1 = this.normalizeWithCache(spoken);
+    const normalized2 = this.normalizeWithCache(target);
+    
+    const distance = this.levenshteinDistance(normalized1, normalized2);
+    const maxLen = Math.max(normalized1.length, normalized2.length);
+    
+    return 1 - (distance / maxLen);
+  }
+
+  // 5. PARTIAL MATCH
+  private partialMatch(spoken: string, target: string): boolean {
+    const normalizedSpoken = this.normalizeWithCache(spoken);
+    const normalizedTarget = this.normalizeWithCache(target);
+    
+    return normalizedTarget.includes(normalizedSpoken) || 
+           normalizedSpoken.includes(normalizedTarget);
+  }
+
+  // 6. PREDICTIVE MATCH
+  private predictiveMatch(spokenWord: string, searchStart: number, _searchEnd: number): { index: number; similarity: number } | null {
+    const lookAhead = 3; // Sonraki 3 kelimeye bak
+    
+    for (let i = 1; i <= lookAhead && searchStart + i < this.lyrics.length; i++) {
+      const futureWord = this.lyrics[searchStart + i];
+      
+      if (this.exactMatch(spokenWord, futureWord)) {
+        // İlerideki bir kelime eşleşti
+        console.log(`⏭️ [MATCHER] ${i} kelime atlanıyor (predictive match)`);
+        return { index: searchStart + i, similarity: 0.8 };
+      }
+    }
+    
+    return null;
+  }
+
+  // Cache'li normalizasyon (speed.md'den)
+  private normalizeWithCache(word: string): string {
+    if (this.normalizedCache.has(word)) {
+      return this.normalizedCache.get(word)!;
+    }
+    
+    let normalized = this.cleanWord(word);
+    
+    // Türkçe karakterleri değiştir
+    for (const [tr, en] of Object.entries(this.TR_CHARS)) {
+      normalized = normalized.replace(new RegExp(tr, 'g'), en);
+    }
+    
+    this.normalizedCache.set(word, normalized);
+    return normalized;
+  }
+
+  // Fonetik dönüşüm (speed.md'den)
+  private toPhonetic(word: string): string {
+    if (this.phoneticCache.has(word)) {
+      return this.phoneticCache.get(word)!;
+    }
+    
+    let phonetic = this.normalizeWithCache(word);
+    
+    // Çift harfleri tekle indir
+    phonetic = phonetic.replace(/(.)\1+/g, '$1');
+    
+    // Sessiz harfleri grupla
+    for (const [base, similars] of Object.entries(this.PHONETIC_SIMILAR)) {
+      for (const similar of similars) {
+        phonetic = phonetic.replace(new RegExp(similar, 'g'), base);
+      }
+    }
+    
+    this.phoneticCache.set(word, phonetic);
+    return phonetic;
+  }
+
+  // Levenshtein Distance (optimized) - speed.md'den
+  private levenshteinDistance(str1: string, str2: string): number {
+    const len1 = str1.length;
+    const len2 = str2.length;
+    
+    // Optimize edilmiş versiyon (sadece iki satır kullan)
+    let prev = Array.from({ length: len2 + 1 }, (_, i) => i);
+    let curr = new Array(len2 + 1);
+    
+    for (let i = 1; i <= len1; i++) {
+      curr[0] = i;
+      
+      for (let j = 1; j <= len2; j++) {
+        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        curr[j] = Math.min(
+          curr[j - 1] + 1,      // insertion
+          prev[j] + 1,          // deletion
+          prev[j - 1] + cost    // substitution
+        );
+      }
+      
+      [prev, curr] = [curr, prev];
+    }
+    
+    return prev[len2];
   }
 }

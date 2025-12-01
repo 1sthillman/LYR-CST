@@ -16,6 +16,10 @@ export class SpeechRecognitionService {
   private permissionCheckInterval: NodeJS.Timeout | null = null; // Permissions kontrolü
   private transcripts: string[] = []; // Transcript geçmişi (memory leak önleme)
   private maxTranscriptLength = 500; // Maksimum transcript sayısı
+  private silenceTimeout: NodeJS.Timeout | null = null; // Silence detection timeout
+  private readonly SILENCE_THRESHOLD = 2000; // 2 saniye sessizlik
+  private wordBuffer: string[] = []; // Word buffer for better matching
+  private readonly BUFFER_SIZE = 3; // Son 3 kelimeyi tut
 
   /**
    * Servisi başlatır ve modeli yükler
@@ -33,12 +37,28 @@ export class SpeechRecognitionService {
 
       if (!SpeechRecognition) {
         console.error('❌ Web Speech API bulunamadı!');
-        // MOBİL TARAYICI İÇİN: Daha açıklayıcı hata mesajı
+        // MOBİL TARAYICI İÇİN: Daha açıklayıcı hata mesajı (speed.md'den)
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         if (isMobile) {
-          throw new Error('Mobil tarayıcınız Web Speech API\'yi desteklemiyor. Lütfen Chrome veya Safari kullanın.');
+          const errorMsg = 'Mobil tarayıcınız Web Speech API\'yi desteklemiyor! 😔\n\n' +
+            'Lütfen şu tarayıcılardan birini kullanın:\n' +
+            '• Google Chrome (önerilen)\n' +
+            '• Microsoft Edge\n' +
+            '• Samsung Internet Browser';
+          if (onError) {
+            onError(new Error(errorMsg));
+          }
+          throw new Error(errorMsg);
         }
-        throw new Error('Tarayıcınız Web Speech API\'yi desteklemiyor. Lütfen Chrome, Edge veya Safari kullanın.');
+        const errorMsg = 'Tarayıcınız Web Speech API\'yi desteklemiyor! 😔\n\n' +
+          'Lütfen şu tarayıcılardan birini kullanın:\n' +
+          '• Google Chrome (önerilen)\n' +
+          '• Microsoft Edge\n' +
+          '• Safari';
+        if (onError) {
+          onError(new Error(errorMsg));
+        }
+        throw new Error(errorMsg);
       }
 
       console.log('✅ Web Speech API bulundu');
@@ -149,7 +169,9 @@ export class SpeechRecognitionService {
         }
       }
       
-      recognition.maxAlternatives = 1; // Sadece en iyi sonuç
+      // Performance optimizations - speed.md'den
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      recognition.maxAlternatives = isMobileDevice ? 5 : 3; // Mobilde daha fazla alternatif (speed.md)
 
       console.log('⚙️ Recognition ayarları:', {
         continuous: recognition.continuous,
@@ -597,6 +619,12 @@ export class SpeechRecognitionService {
           if (transcript.length > 0 && confidence >= minConfidence) {
             console.log(`✅ [SPEECH] Transcript geçti! Transcript: "${transcript}" | Confidence: ${confidence.toFixed(3)} >= ${minConfidence} | isFinal: ${result.isFinal}`);
             
+            // Word buffer'a ekle (speed.md'den)
+            this.updateWordBuffer(transcript);
+            
+            // Silence timer'ı sıfırla (speed.md'den)
+            this.resetSilenceTimer();
+            
             // Kelimeleri ayır ve temizle
             const words = transcript.split(/\s+/).filter((w: string) => w.length > 0);
             console.log(`📝 [SPEECH] Kelimelere ayrıldı: ${words.length} kelime | Words:`, words);
@@ -665,6 +693,42 @@ export class SpeechRecognitionService {
   }
 
   /**
+   * Word buffer'ı güncelle (speed.md'den)
+   */
+  private updateWordBuffer(transcript: string): void {
+    const words = transcript.split(' ').filter(w => w.length > 0);
+    this.wordBuffer.push(...words);
+    
+    // Buffer boyutunu koru
+    if (this.wordBuffer.length > this.BUFFER_SIZE) {
+      this.wordBuffer = this.wordBuffer.slice(-this.BUFFER_SIZE);
+    }
+  }
+
+  /**
+   * Silence timer'ı sıfırla (speed.md'den)
+   */
+  private resetSilenceTimer(): void {
+    if (this.silenceTimeout) {
+      clearTimeout(this.silenceTimeout);
+    }
+    
+    this.silenceTimeout = setTimeout(() => {
+      console.log('⏱️ [SPEECH] Sessizlik algılandı, yeniden başlatılıyor...');
+      if (this.isListening) {
+        this.restartRecognition();
+      }
+    }, this.SILENCE_THRESHOLD);
+  }
+
+  /**
+   * Word buffer'ı al (speed.md'den)
+   */
+  getWordBuffer(): string[] {
+    return [...this.wordBuffer];
+  }
+
+  /**
    * Dinlemeyi durdurur
    */
   stop(): void {
@@ -674,6 +738,14 @@ export class SpeechRecognitionService {
       clearTimeout(this.restartTimeout);
       this.restartTimeout = null;
     }
+
+    if (this.silenceTimeout) {
+      clearTimeout(this.silenceTimeout);
+      this.silenceTimeout = null;
+    }
+
+    // Word buffer'ı temizle
+    this.wordBuffer = [];
 
     // Permission monitoring'i durdur
     if (this.permissionCheckInterval) {
