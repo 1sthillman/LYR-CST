@@ -14,12 +14,18 @@ export class LyricsMatcher {
   private lyrics: string[] = [];
   private matchedWords: (MatchedWord | null)[] = [];
   private _currentPosition: number = 0;
-  private readonly LOOKAHEAD_RANGE = 8; // 8 kelime ileriye bak (atlanan kelimeleri bul)
-  private readonly MAX_POSITION_JUMP = 4; // Maksimum 4 kelime ileriye atla
+  private readonly LOOKAHEAD_RANGE = 8; // 8 kelime ileriye bak (atlanan kelimeleri bul) - HIZLI KONUŞMA'da 15'e çıkar
+  private readonly MAX_POSITION_JUMP = 4; // Maksimum 4 kelime ileriye atla - HIZLI KONUŞMA'da 10'a çıkar
   private readonly STUCK_TIMEOUT = 15000; // 15 saniye takılı kalırsa ilerle (ms) - sadece gerçek takılma durumunda
   private lastDetectedWord: string = ''; // Son algılanan kelime (partial match kontrolü için)
   private lastWordDetectedTime: number = 0; // Son kelime algılanma zamanı (sessizlik tespiti için)
   private consecutiveNoMatchCount: number = 0; // Ardışık eşleşmeme sayısı
+  
+  // HIZLI KONUŞMA TESPİTİ (RAP/ŞARKI İÇİN)
+  private readonly FAST_SPEECH_THRESHOLD = 500; // 500ms'den kısa sürede kelime gelirse hızlı konuşma
+  private readonly FAST_SPEECH_WINDOW = 3; // Son 3 kelimeye bak
+  private recentMatchTimes: number[] = []; // Son eşleşmelerin zamanları (hızlı konuşma tespiti için)
+  private isFastSpeech: boolean = false; // Hızlı konuşma durumu
   
   private adaptiveThreshold: AdaptiveThreshold;
   private lastMatchTime: number = 0;
@@ -99,6 +105,10 @@ export class LyricsMatcher {
     this.consecutiveNoMatchCount = 0;
     this.adaptiveThreshold.reset();
     this.clearStuckTimeout();
+    
+    // Hızlı konuşma tespiti için temizle
+    this.recentMatchTimes = [];
+    this.isFastSpeech = false;
     
     // Cache'leri temizle (speed.md'den)
     this.phoneticCache.clear();
@@ -252,7 +262,54 @@ export class LyricsMatcher {
   }
 
   /**
-   * Algılanan kelimeyi işler ve eşleştirir - AKILLI VE HIZLI
+   * Hızlı konuşma tespiti - son birkaç kelime arasındaki zaman farkına bak
+   */
+  private detectFastSpeech(): void {
+    const now = Date.now();
+    
+    // Son eşleşmelerin zamanlarını tut (son 3 kelime)
+    if (this.recentMatchTimes.length >= this.FAST_SPEECH_WINDOW) {
+      this.recentMatchTimes.shift(); // En eski zamanı çıkar
+    }
+    this.recentMatchTimes.push(now);
+    
+    // Eğer yeterli veri varsa, hızlı konuşma kontrolü yap
+    if (this.recentMatchTimes.length >= 2) {
+      const timeDiffs: number[] = [];
+      for (let i = 1; i < this.recentMatchTimes.length; i++) {
+        timeDiffs.push(this.recentMatchTimes[i] - this.recentMatchTimes[i - 1]);
+      }
+      
+      // Ortalama zaman farkını hesapla
+      const avgTimeDiff = timeDiffs.reduce((a, b) => a + b, 0) / timeDiffs.length;
+      
+      // Eğer ortalama zaman farkı threshold'dan kısaysa hızlı konuşma
+      this.isFastSpeech = avgTimeDiff < this.FAST_SPEECH_THRESHOLD;
+      
+      if (this.isFastSpeech) {
+        console.log(`⚡ [MATCHER] HIZLI KONUŞMA TESPİT EDİLDİ! Ortalama kelime aralığı: ${avgTimeDiff.toFixed(0)}ms (threshold: ${this.FAST_SPEECH_THRESHOLD}ms)`);
+      }
+    }
+  }
+
+  /**
+   * Hızlı konuşma durumunda dinamik lookahead ve max jump değerlerini döndür
+   */
+  private getDynamicRanges(): { lookahead: number; maxJump: number } {
+    if (this.isFastSpeech) {
+      return {
+        lookahead: 15, // Hızlı konuşmada 15 kelime ileriye bak
+        maxJump: 10    // Hızlı konuşmada 10 kelime atla
+      };
+    }
+    return {
+      lookahead: this.LOOKAHEAD_RANGE,
+      maxJump: this.MAX_POSITION_JUMP
+    };
+  }
+
+  /**
+   * Algılanan kelimeyi işler ve eşleştirir - AKILLI VE HIZLI (HIZLI KONUŞMA DESTEKLİ)
    */
   processWord(detectedWord: string, confidence: number): MatchedWord | null {
     if (this._currentPosition >= this.lyrics.length) {
@@ -270,13 +327,20 @@ export class LyricsMatcher {
     // Adaptive threshold'u al
     const dynamicThreshold = this.adaptiveThreshold.getThreshold();
     
+    // Hızlı konuşma tespiti yap
+    this.detectFastSpeech();
+    
+    // Dinamik aralıkları al (hızlı konuşma durumunda daha geniş)
+    const { lookahead, maxJump } = this.getDynamicRanges();
+    
     // Önce mevcut pozisyondaki kelimeyi kontrol et
     let bestMatch: { index: number; similarity: number } | null = null;
     
     // Lookahead: Mevcut pozisyondan başlayarak ileriye bak (atlanan kelimeleri bul)
+    // HIZLI KONUŞMA'da daha geniş aralık kullan
     const searchStart = this._currentPosition;
     const searchEnd = Math.min(
-      this._currentPosition + this.LOOKAHEAD_RANGE,
+      this._currentPosition + lookahead,
       this.lyrics.length
     );
 
@@ -360,20 +424,38 @@ export class LyricsMatcher {
 
     // Eşleşme bulundu mu? - ADAPTIVE THRESHOLD kullan - AKILLI VE HIZLI EŞLEŞME
     // MOBİL İÇİN ÇOK AGRESİF AYARLAR: Mobilde Türkçe algılama için çok esnek threshold'lar
+    // HIZLI KONUŞMA'da DAHA DA AGRESİF: Hızlı konuşmada threshold'ları daha da düşür
     const isMobile = isMobileBrowser();
     
     // Confidence threshold - mobilde HİÇBİR THRESHOLD YOK (TÜM KELİMELERİ KABUL ET)
-    const minConfidenceForMatch = isMobile ? 0.01 : 0.45; // Mobil: 0.01 (neredeyse hiç threshold yok), PC: 0.45
+    // HIZLI KONUŞMA'da daha da düşük threshold
+    let minConfidenceForMatch: number;
+    if (this.isFastSpeech) {
+      minConfidenceForMatch = isMobile ? 0.01 : 0.30; // Hızlı konuşma: Mobil 0.01, PC 0.30
+    } else {
+      minConfidenceForMatch = isMobile ? 0.01 : 0.45; // Normal: Mobil 0.01, PC 0.45
+    }
     
     // Partial match kontrolü - eğer partial match varsa daha esnek similarity
     const isPartialMatchForBest = bestMatch && this.isPartialMatchForWord(detectedWordClean, this.lyrics[bestMatch.index]);
     
     // Similarity threshold - mobilde ÇOK daha esnek (Türkçe algılama için kritik)
+    // HIZLI KONUŞMA'da DAHA DA AGRESİF: Hızlı konuşmada similarity threshold'ları daha da düşür
     let minSimilarityForMatch: number;
-    if (isPartialMatchForBest) {
-      minSimilarityForMatch = isMobile ? 0.50 : 0.70; // Partial match: Mobil 0.50 (çok agresif), PC 0.70
+    if (this.isFastSpeech) {
+      // Hızlı konuşma durumunda çok daha agresif threshold'lar
+      if (isPartialMatchForBest) {
+        minSimilarityForMatch = isMobile ? 0.40 : 0.60; // Hızlı konuşma + Partial: Mobil 0.40, PC 0.60
+      } else {
+        minSimilarityForMatch = isMobile ? 0.45 : 0.65; // Hızlı konuşma: Mobil 0.45, PC 0.65
+      }
     } else {
-      minSimilarityForMatch = isMobile ? 0.55 : 0.75; // Normal: Mobil 0.55 (çok agresif), PC 0.75
+      // Normal konuşma
+      if (isPartialMatchForBest) {
+        minSimilarityForMatch = isMobile ? 0.50 : 0.70; // Partial match: Mobil 0.50, PC 0.70
+      } else {
+        minSimilarityForMatch = isMobile ? 0.55 : 0.75; // Normal: Mobil 0.55, PC 0.75
+      }
     }
     
     // MOBİLDE TÜM EŞLEŞME DENEMELERİNİ LOGLA (DEBUG İÇİN)
@@ -394,23 +476,36 @@ export class LyricsMatcher {
       const matchIndex = bestMatch.index;
       
       // POZİSYON ATLAMASINI SINIRLA - AKILLI VE HIZLI KONTROL
+      // HIZLI KONUŞMA'da daha geniş atlama izni
       const positionJump = matchIndex - this._currentPosition;
       
       // KRİTİK: Pozisyon atlaması için similarity kontrolü - partial match'ler için esnek
       // MOBİL İÇİN ÇOK AGRESİF: Mobilde pozisyon atlaması için çok esnek threshold
+      // HIZLI KONUŞMA'da DAHA DA AGRESİF: Hızlı konuşmada atlama threshold'ları daha da düşür
       const isPartialMatchForJump = this.isPartialMatchForWord(detectedWordClean, this.lyrics[matchIndex]);
       let minSimilarityForJump: number;
       if (positionJump > 0) {
-        if (isPartialMatchForJump) {
-          minSimilarityForJump = isMobile ? 0.50 : 0.75; // Partial match atlaması: Mobil 0.50 (çok agresif), PC 0.75
+        if (this.isFastSpeech) {
+          // Hızlı konuşma durumunda çok daha agresif atlama threshold'ları
+          if (isPartialMatchForJump) {
+            minSimilarityForJump = isMobile ? 0.40 : 0.60; // Hızlı konuşma + Partial atlaması: Mobil 0.40, PC 0.60
+          } else {
+            minSimilarityForJump = isMobile ? 0.45 : 0.65; // Hızlı konuşma atlaması: Mobil 0.45, PC 0.65
+          }
         } else {
-          minSimilarityForJump = isMobile ? 0.55 : 0.80; // Normal atlama: Mobil 0.55 (çok agresif), PC 0.80
+          // Normal konuşma
+          if (isPartialMatchForJump) {
+            minSimilarityForJump = isMobile ? 0.50 : 0.75; // Partial match atlaması: Mobil 0.50, PC 0.75
+          } else {
+            minSimilarityForJump = isMobile ? 0.55 : 0.80; // Normal atlama: Mobil 0.55, PC 0.80
+          }
         }
       } else {
         minSimilarityForJump = minSimilarityForMatch;
       }
       
-      if (positionJump > this.MAX_POSITION_JUMP) {
+      // HIZLI KONUŞMA'da daha geniş atlama izni (maxJump dinamik)
+      if (positionJump > maxJump) {
         // Çok büyük atlama - eşleşmeyi reddet
         console.log(`⚠️ [MATCHER] Çok büyük atlama reddedildi: ${positionJump} kelime | Pozisyon: ${this._currentPosition} -> ${matchIndex} | Similarity: ${bestMatch.similarity.toFixed(2)}`);
         const targetWord = this.lyrics[this._currentPosition];
@@ -497,8 +592,12 @@ export class LyricsMatcher {
       this.consecutiveNoMatchCount = 0; // Eşleşme oldu, reset
       this.clearStuckTimeout();
       
-      // DETAYLI LOG - Eşleşme başarılı
-      console.log(`✅ [MATCHER] EŞLEŞME BAŞARILI! "${detectedWordClean}" -> "${this.lyrics[matchIndex]}" | Pozisyon: ${oldPosition} -> ${this._currentPosition} | Similarity: ${bestMatch.similarity.toFixed(2)} | Confidence: ${confidence.toFixed(2)} | Doğru: ${finalIsCorrect}`);
+      // Hızlı konuşma tespiti için zamanı kaydet
+      this.detectFastSpeech();
+      
+      // DETAYLI LOG - Eşleşme başarılı (hızlı konuşma durumu dahil)
+      const fastSpeechInfo = this.isFastSpeech ? ' ⚡HIZLI KONUŞMA' : '';
+      console.log(`✅ [MATCHER] EŞLEŞME BAŞARILI!${fastSpeechInfo} "${detectedWordClean}" -> "${this.lyrics[matchIndex]}" | Pozisyon: ${oldPosition} -> ${this._currentPosition} | Similarity: ${bestMatch.similarity.toFixed(2)} | Confidence: ${confidence.toFixed(2)} | Doğru: ${finalIsCorrect} | Atlama: ${positionJump} kelime`);
       
       // Adaptive threshold'u güncelle
       this.adaptiveThreshold.adjustThreshold(confidence, true);
@@ -667,6 +766,11 @@ export class LyricsMatcher {
     this.consecutiveNoMatchCount = 0;
     this.adaptiveThreshold.reset();
     this.clearStuckTimeout();
+    
+    // Hızlı konuşma tespiti için temizle
+    this.recentMatchTimes = [];
+    this.isFastSpeech = false;
+    
     console.log('Eşleştirme sıfırlandı');
   }
 
