@@ -981,11 +981,17 @@ ${logs || '(Henüz log yok)'}
     // İleri git - tıklanan kelimeye kadar TÜM kelimeleri işaretle
     if (index > currentWordIndex) {
       // Mevcut pozisyondan tıklanan kelimeye kadar tüm kelimeleri işaretle
+      // currentWordIndex'ten index'e kadar (index dahil değil, çünkü index'e kadar işaretlenecek)
       for (let i = currentWordIndex; i < index; i++) {
-        const word = words[i + 1]; // Bir sonraki kelimeyi al
+        const word = words[i + 1]; // Bir sonraki kelimeyi al (i+1 çünkü currentWordIndex'ten sonraki kelime)
         if (word) {
           matcherRef.current.processWord(word, 1.0);
         }
+      }
+      // Son olarak tıklanan kelimeyi de işaretle
+      const clickedWord = words[index];
+      if (clickedWord) {
+        matcherRef.current.processWord(clickedWord, 1.0);
       }
       setCurrentWordIndex(index);
       setAccuracy(Math.round(matcherRef.current.getAccuracy() * 100));
