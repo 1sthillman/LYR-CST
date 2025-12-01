@@ -7,6 +7,9 @@ export class NativeSpeechRecognitionService {
   private isListening: boolean = false;
   private callback: ((word: string, confidence: number) => void) | null = null;
   private onErrorCallback: ((error: Error) => void) | null = null;
+  private transcripts: string[] = []; // Transcript geçmişi (memory leak önleme)
+  private maxTranscriptLength = 500; // Maksimum transcript sayısı
+  private cleanupCallbacks: (() => void)[] = []; // Cleanup callback'leri
 
   /**
    * Native Android Speech Recognition başlat
@@ -65,11 +68,21 @@ export class NativeSpeechRecognitionService {
       console.log('📱 [NATIVE SPEECH] Bridge startListening var mı:', typeof finalBridge.startListening);
       console.log('📱 [NATIVE SPEECH] Bridge stopListening var mı:', typeof finalBridge.stopListening);
 
+      // MEMORY LEAK ÖNLEME: Eski listener'ları temizle
+      this.cleanup();
+
       // Android'den gelen mesajları dinle
-      (window as any).onNativeSpeechResult = (transcript: string, confidence: number) => {
+      const resultHandler = (transcript: string, confidence: number) => {
         console.log(`📱 [NATIVE SPEECH] ⚡⚡⚡ onNativeSpeechResult CALLBACK TETİKLENDİ! ⚡⚡⚡`);
         console.log(`📱 [NATIVE SPEECH] Transcript: "${transcript}" | Confidence: ${confidence.toFixed(3)}`);
         console.log(`📱 [NATIVE SPEECH] isListening: ${this.isListening} | callback var mı: ${!!this.callback}`);
+        
+        // MEMORY LEAK ÖNLEME: Transcript geçmişini temizle
+        this.transcripts.push(transcript);
+        if (this.transcripts.length > this.maxTranscriptLength) {
+          this.transcripts = this.transcripts.slice(-100); // Son 100'ü tut
+          console.log('🧹 [NATIVE SPEECH] Transcript geçmişi temizlendi (memory leak önleme)');
+        }
         
         if (this.isListening && this.callback) {
           console.log(`📱 [NATIVE SPEECH] ⚡⚡⚡ Kelime algılandı: "${transcript}" | Confidence: ${confidence.toFixed(3)} ⚡⚡⚡`);
@@ -92,18 +105,30 @@ export class NativeSpeechRecognitionService {
         }
       };
 
-      (window as any).onNativeSpeechError = (error: string) => {
+      const errorHandler = (error: string) => {
         console.error(`❌ [NATIVE SPEECH] Hata: ${error}`);
         if (this.onErrorCallback) {
           this.onErrorCallback(new Error(error));
         }
       };
 
-      // Speech Recognition hazır olduğunda bildir
-      (window as any).onNativeSpeechReady = () => {
+      const readyHandler = () => {
         console.log('✅ [NATIVE SPEECH] ⚡⚡⚡ Speech Recognition hazır - Dinlemeye başladı! ⚡⚡⚡');
         (window as any).__nativeSpeechReady = true; // Flag set et
       };
+
+      // Listener'ları kaydet (cleanup için)
+      (window as any).onNativeSpeechResult = resultHandler;
+      (window as any).onNativeSpeechError = errorHandler;
+      (window as any).onNativeSpeechReady = readyHandler;
+
+      // Cleanup callback'lerini kaydet
+      this.cleanupCallbacks.push(() => {
+        (window as any).onNativeSpeechResult = null;
+        (window as any).onNativeSpeechError = null;
+        (window as any).onNativeSpeechReady = null;
+        (window as any).__nativeSpeechReady = false;
+      });
 
       // 5 saniye sonra hala onReadyForSpeech tetiklenmediyse hata bildir
       setTimeout(() => {
@@ -167,11 +192,43 @@ export class NativeSpeechRecognitionService {
       console.error('❌ [NATIVE SPEECH] Durdurulamadı:', error);
     }
 
+    // Cleanup: Tüm listener'ları temizle
+    this.cleanup();
+
     this.isListening = false;
     this.callback = null;
     this.onErrorCallback = null;
     
     console.log('✅ [NATIVE SPEECH] Native Android Speech Recognition durduruldu');
+  }
+
+  /**
+   * Tüm listener'ları ve resource'ları temizle (memory leak önleme)
+   */
+  private cleanup(): void {
+    // Cleanup callback'lerini çalıştır
+    this.cleanupCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (error) {
+        console.error('❌ [NATIVE SPEECH] Cleanup callback hatası:', error);
+      }
+    });
+    this.cleanupCallbacks = [];
+
+    // Transcript geçmişini temizle
+    if (this.transcripts.length > 100) {
+      this.transcripts = this.transcripts.slice(-50);
+      console.log('🧹 [NATIVE SPEECH] Transcript geçmişi temizlendi');
+    }
+  }
+
+  /**
+   * Transcript geçmişini temizle
+   */
+  clearTranscripts(): void {
+    this.transcripts = [];
+    console.log('🧹 [NATIVE SPEECH] Tüm transcript geçmişi temizlendi');
   }
 
   /**

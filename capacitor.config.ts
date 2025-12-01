@@ -16,7 +16,11 @@ const config: CapacitorConfig = {
       'RECORD_AUDIO',
       'FOREGROUND_SERVICE',
       'WAKE_LOCK',
+      'MODIFY_AUDIO_SETTINGS',
     ],
+    allowMixedContent: true,
+    captureInput: true,
+    webContentsDebuggingEnabled: true, // Debug için (production'da false yapılabilir)
   },
   plugins: {
     CapacitorSQLite: {

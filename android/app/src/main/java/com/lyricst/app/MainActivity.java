@@ -61,17 +61,61 @@ public class MainActivity extends BridgeActivity {
     }
     
     /**
-     * Mikrofon iznini kontrol et ve iste
+     * Mikrofon iznini kontrol et ve iste - ROBUST ERROR HANDLING
      */
     private void checkAndRequestMicrophonePermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
-                != PackageManager.PERMISSION_GRANTED) {
-            // İzin yoksa iste
-            ActivityCompat.requestPermissions(
-                this,
-                new String[]{Manifest.permission.RECORD_AUDIO},
-                PERMISSION_REQUEST_CODE
-            );
+        try {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
+                    != PackageManager.PERMISSION_GRANTED) {
+                // İzin yoksa iste - Android 12+ için açıklama göster
+                Log.d("LYRICST", "Mikrofon izni isteniyor...");
+                ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    PERMISSION_REQUEST_CODE
+                );
+            } else {
+                Log.d("LYRICST", "Mikrofon izni zaten verilmiş");
+            }
+        } catch (Exception e) {
+            Log.e("LYRICST", "Mikrofon izni hatası: " + e.getMessage());
+            // Hata olsa bile devam et - kullanıcı ayarlardan verebilir
+        }
+    }
+    
+    /**
+     * Permission request sonucunu handle et
+     */
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d("LYRICST", "✅ Mikrofon izni verildi");
+                // JavaScript'e bildir
+                WebView webView = getBridge().getWebView();
+                if (webView != null) {
+                    webView.post(() -> {
+                        webView.evaluateJavascript(
+                            "console.log('[ANDROID] ✅ Mikrofon izni verildi'); if (window.onMicrophonePermissionGranted) window.onMicrophonePermissionGranted();",
+                            null
+                        );
+                    });
+                }
+            } else {
+                Log.w("LYRICST", "❌ Mikrofon izni reddedildi");
+                // JavaScript'e bildir
+                WebView webView = getBridge().getWebView();
+                if (webView != null) {
+                    webView.post(() -> {
+                        webView.evaluateJavascript(
+                            "console.error('[ANDROID] ❌ Mikrofon izni reddedildi'); if (window.onMicrophonePermissionDenied) window.onMicrophonePermissionDenied();",
+                            null
+                        );
+                    });
+                }
+            }
         }
     }
     

@@ -1080,19 +1080,76 @@ ${logs || '(Henüz log yok)'}
     // index === currentWordIndex ise hiçbir şey yapma (aynı kelimeye tekrar tıklandı)
   }, [isManualMode, isListening, currentWordIndex, words]);
 
-  // Cleanup - component unmount olduğunda
+  // COMPONENT LIFECYCLE CLEANUP - Memory leak önleme
   useEffect(() => {
     return () => {
-      // Component kapanırken tüm servisleri temizle
+      console.log('🧹 [PLAYER] Component unmount - Tüm resource\'lar temizleniyor...');
+      
+      // 1. Speech Recognition servislerini durdur
       if (isListening) {
-        speechRecognitionService.stop();
-        // Cleanup - SADECE ANDROID'DE
-        if (isAndroid()) {
-          dummyRecorderService.stop().catch(console.error);
+        try {
+          if (!isManualMode) {
+            speechRecognitionService.stop();
+            speechRecognitionService.clearTranscripts(); // Transcript temizle
+            nativeSpeechRecognitionService.stop();
+            nativeSpeechRecognitionService.clearTranscripts(); // Transcript temizle
+          }
+        } catch (error) {
+          console.error('❌ [PLAYER] Cleanup hatası (speech):', error);
         }
       }
+      
+      // 2. AudioContext ve AnalyserNode temizle
+      if (audioContextRef.current) {
+        try {
+          audioContextRef.current.close();
+          audioContextRef.current = null;
+        } catch (error) {
+          console.error('❌ [PLAYER] Cleanup hatası (audioContext):', error);
+        }
+      }
+      
+      if (analyserRef.current) {
+        analyserRef.current = null;
+      }
+      
+      // 3. Animation frame'i iptal et
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      // 4. Mikrofon stream'ini durdur
+      const stream = (window as any).__microphoneStream as MediaStream | undefined;
+      if (stream) {
+        try {
+          stream.getTracks().forEach(track => {
+            track.stop();
+            console.log('🧹 [PLAYER] Mikrofon track durduruldu');
+          });
+          (window as any).__microphoneStream = null;
+        } catch (error) {
+          console.error('❌ [PLAYER] Cleanup hatası (stream):', error);
+        }
+      }
+      
+      // 5. Dummy recorder'ı durdur - SADECE ANDROID'DE
+      if (isAndroid()) {
+        try {
+          dummyRecorderService.stop().catch(console.error);
+        } catch (error) {
+          console.error('❌ [PLAYER] Cleanup hatası (dummy recorder):', error);
+        }
+      }
+      
+      // 6. Matcher'ı reset et
+      if (matcherRef.current) {
+        matcherRef.current.reset();
+      }
+      
+      console.log('✅ [PLAYER] Component cleanup tamamlandı');
     };
-  }, [isListening]);
+  }, []); // Sadece unmount'ta çalış (isListening dependency yok - her durumda temizle)
 
   // Ekran arkaya alındığında bile devam et (dummy.md'deki gibi)
   useEffect(() => {

@@ -14,6 +14,8 @@ export class SpeechRecognitionService {
   private lastProcessedIndex: number = -1; // Son işlenen result index'i
   private restartTimeout: number | null = null; // Restart timeout'u
   private permissionCheckInterval: NodeJS.Timeout | null = null; // Permissions kontrolü
+  private transcripts: string[] = []; // Transcript geçmişi (memory leak önleme)
+  private maxTranscriptLength = 500; // Maksimum transcript sayısı
 
   /**
    * Servisi başlatır ve modeli yükler
@@ -667,6 +669,12 @@ export class SpeechRecognitionService {
       this.restartTimeout = null;
     }
 
+    // Permission monitoring'i durdur
+    if (this.permissionCheckInterval) {
+      clearInterval(this.permissionCheckInterval);
+      this.permissionCheckInterval = null;
+    }
+
     if (this.recognition && this.isListening) {
       try {
         this.recognition.stop();
@@ -674,6 +682,13 @@ export class SpeechRecognitionService {
         this.callback = null;
         this.processedWords.clear();
         this.lastProcessedIndex = -1;
+        
+        // MEMORY LEAK ÖNLEME: Transcript geçmişini temizle
+        if (this.transcripts.length > 100) {
+          this.transcripts = this.transcripts.slice(-50);
+          console.log('🧹 [SPEECH] Transcript geçmişi temizlendi (memory leak önleme)');
+        }
+        
         console.log('✅ Recognition durduruldu');
       } catch (error) {
         console.error('❌ Dinleme durdurulamadı:', error);
@@ -696,6 +711,19 @@ export class SpeechRecognitionService {
     if (this.recognition) {
       this.recognition = null;
     }
+    
+    // MEMORY LEAK ÖNLEME: Tüm transcript geçmişini temizle
+    this.transcripts = [];
+    this.processedWords.clear();
+    console.log('🧹 [SPEECH] Tüm resource\'lar temizlendi');
+  }
+
+  /**
+   * Transcript geçmişini temizle (memory leak önleme)
+   */
+  clearTranscripts(): void {
+    this.transcripts = [];
+    console.log('🧹 [SPEECH] Tüm transcript geçmişi temizlendi');
   }
 }
 

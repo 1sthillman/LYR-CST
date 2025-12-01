@@ -4,4 +4,6 @@
     <string name="title_activity_main">LYRİC-ST</string>
     <string name="package_name">com.lyricst.app</string>
     <string name="custom_url_scheme">com.lyricst.app</string>
+    <!-- Android 12+ Mikrofon Gizlilik Göstergesi Açıklaması -->
+    <string name="microphone_usage_description">Şarkı sözlerini gerçek zamanlı analiz etmek ve karaoke performansınızı takip etmek için mikrofon erişimi gereklidir. Mikrofon sadece konuşma tanıma için kullanılır ve hiçbir ses kaydedilmez.</string>
 </resources>

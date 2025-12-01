@@ -7,7 +7,14 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="false">
+        
+        <!-- Microphone özelliği gerektir (opsiyonel) -->
+        <uses-feature 
+            android:name="android.hardware.microphone" 
+            android:required="false" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
@@ -21,6 +28,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Android 12+ Mikrofon Gizlilik Göstergesi Meta-Data -->
+            <meta-data
+                android:name="android.app.microphone_usage_description"
+                android:value="@string/microphone_usage_description" />
 
         </activity>
 
