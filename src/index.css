@@ -33,3 +33,77 @@ body {
   width: 100%;
   min-height: 100vh;
 }
+
+/* MOBİL PERFORMANS OPTİMİZASYONLARI */
+/* GPU hızlandırma için transform ve opacity kullan */
+.motion-element,
+[data-motion] {
+  will-change: transform, opacity;
+  transform: translateZ(0); /* GPU hızlandırma */
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Mobilde animasyonları optimize et */
+@media (max-width: 768px) {
+  /* Backdrop blur'u azalt */
+  .backdrop-blur-2xl {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+  
+  .backdrop-blur-xl {
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+  }
+  
+  /* Animasyon sürelerini azalt */
+  * {
+    transition-duration: 0.15s !important;
+    animation-duration: 0.15s !important;
+  }
+  
+  /* Smooth scroll'u devre dışı bırak (performans için) */
+  * {
+    scroll-behavior: auto !important;
+  }
+  
+  /* Transform optimizasyonu */
+  .transform,
+  [style*="transform"] {
+    will-change: transform;
+    transform: translateZ(0);
+  }
+}
+
+/* Scroll optimizasyonu */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  -webkit-overflow-scrolling: touch; /* iOS smooth scroll */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+/* Text rendering optimizasyonu */
+.text-optimize {
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+
+/* Image optimizasyonu */
+img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
