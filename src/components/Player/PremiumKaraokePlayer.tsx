@@ -45,6 +45,9 @@ export const PremiumKaraokePlayer: React.FC<Props> = ({ lyrics, songId, songTitl
   const [isManualMode, setIsManualMode] = useState<boolean>(false);
   const [modeSelected, setModeSelected] = useState<boolean>(false); // Mod seçildi mi?
   
+  // UX State Machine - Mikrofon durumu
+  const [micState, setMicState] = useState<'idle' | 'requesting' | 'loading' | 'active' | 'error'>('idle');
+  
   // Debug logları için
   const debugLogsRef = useRef<string[]>([]);
   const maxDebugLogs = 1000; // Maksimum 1000 log sakla
@@ -600,7 +603,10 @@ ${logs || '(Henüz log yok)'}
     }
   }, [currentWordIndex, isMobile, scrollToCurrentWord]);
 
-  // Kelime algılama callback'i - ANLIK İŞARETLEME (HER KELİME İÇİN GÜNCELLE)
+  // Debounced kelime işleme - CPU optimizasyonu için
+  const processWordDebounced = useRef<((word: string, confidence: number) => void) | null>(null);
+  
+  // Kelime algılama callback'i - DEBOUNCED İŞLEME (CPU OPTİMİZASYONU)
   const handleWordDetected = useCallback((word: string, confidence: number): void => {
     // Manuel modda mikrofon dinlemesi çalışmamalı
     if (isManualMode) {
@@ -612,27 +618,46 @@ ${logs || '(Henüz log yok)'}
       addDebugLog(`[WORD DETECTED] Kelime: "${word}" | Confidence: ${confidence.toFixed(3)}`);
     }
     
-    // Anında işle - gecikme yok
-    const match = matcherRef.current.processWord(word, confidence);
-    
-    // HER ZAMAN match döner (yanlış olsa bile) - anlık işaretleme için
-    if (match) {
-      const newPosition = matcherRef.current.currentPosition;
-      const newAccuracy = Math.round(matcherRef.current.getAccuracy() * 100);
+    // Debounced işleme - CPU optimizasyonu için
+    if (!processWordDebounced.current) {
+      let timeoutId: NodeJS.Timeout | null = null;
       
-      // Debug log ekle
-      if (isListening) {
-        addDebugLog(`[MATCH] Eşleşme: "${match.detected}" -> "${match.original}" | Doğru: ${match.isCorrect} | Confidence: ${match.confidence.toFixed(3)} | Pozisyon: ${newPosition}`);
-      }
-      
-      // ANLIK İŞARETLEME - Her kelime için state'i güncelle
-      // flushSync ile anında DOM güncellemesi - anlık görsel geri bildirim
-      flushSync(() => {
-        setCurrentWordIndex(newPosition);
-        setAccuracy(newAccuracy);
-      });
+      processWordDebounced.current = (w: string, c: number) => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        
+        timeoutId = setTimeout(() => {
+          // Adaptive model ile düzelt
+          const adaptiveModel = (window as any).__adaptiveModel;
+          const correctedWord = adaptiveModel ? adaptiveModel.correctTranscript(w) : w;
+          
+          // Anında işle - gecikme yok
+          const match = matcherRef.current.processWord(correctedWord, c);
+          
+          // HER ZAMAN match döner (yanlış olsa bile) - anlık işaretleme için
+          if (match) {
+            const newPosition = matcherRef.current.currentPosition;
+            const newAccuracy = Math.round(matcherRef.current.getAccuracy() * 100);
+            
+            // Debug log ekle
+            if (isListening) {
+              addDebugLog(`[MATCH] Eşleşme: "${match.detected}" -> "${match.original}" | Doğru: ${match.isCorrect} | Confidence: ${match.confidence.toFixed(3)} | Pozisyon: ${newPosition}`);
+            }
+            
+            // ANLIK İŞARETLEME - Her kelime için state'i güncelle
+            // flushSync ile anında DOM güncellemesi - anlık görsel geri bildirim
+            flushSync(() => {
+              setCurrentWordIndex(newPosition);
+              setAccuracy(newAccuracy);
+            });
+          }
+        }, isMobile ? 100 : 50); // Mobilde 100ms, PC'de 50ms debounce
+      };
     }
-  }, []);
+    
+    processWordDebounced.current(word, confidence);
+  }, [isManualMode, isListening, isMobile, addDebugLog]);
 
   // Müzik dosyasını yükle
   useEffect(() => {
@@ -952,15 +977,17 @@ ${logs || '(Henüz log yok)'}
       setAccuracy(0);
       startTimeRef.current = Date.now();
       setIsListening(true);
+      setMicState('active'); // Mikrofon aktif
       
-      toast.success('🎤 Karaoke başlatıldı!', {
+      toast.success('🎤 Karaoke başlatıldı! Mikrofon aktif.', {
         duration: 2000,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Bilinmeyen hata';
       setError(errorMessage);
+      setMicState('error'); // Hata durumu
       dbAdapter.logError('MICROPHONE_ACCESS_DENIED', errorMessage);
-      toast.error(`Hata: ${errorMessage}`);
+      toast.error(`Hata: ${errorMessage}`, { duration: 5000 });
       
       // Hata olursa dummy recorder'ı da durdur - SADECE ANDROID'DE
       if (isAndroid()) {
@@ -972,6 +999,10 @@ ${logs || '(Henüz log yok)'}
       }
     } finally {
       setIsLoading(false);
+      // Eğer hala requesting/loading durumundaysa ve active değilse error'a geç
+      if (micState !== 'active' && micState !== 'idle') {
+        setMicState('error');
+      }
     }
   }, [handleWordDetected, audioFilePath, isManualMode]);
 
